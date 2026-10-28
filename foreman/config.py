@@ -43,6 +43,7 @@ class Scenario:
     budget_usd: float = 10.0
     faults: list = field(default_factory=list)
     expect: dict = field(default_factory=dict)
+    tag: str = ""  # git tag to put on the merged release commit, e.g. v1
 
 
 def _read(path: Path) -> dict:

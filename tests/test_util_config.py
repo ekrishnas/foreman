@@ -149,7 +149,7 @@ def test_load_scenario_applies_defaults(tmp_path):
     p = tmp_path / "s.yaml"
     p.write_text("name: x\nworkflow: feature\ninput: a.md\ntarget: fake\n")
     s = load_scenario(p)
-    assert s.approvals == "scripted" and s.faults == [] and s.budget_usd == 10.0
+    assert s.approvals == "scripted" and s.faults == [] and s.budget_usd == 10.0 and s.tag == ""
     assert s.start_ref == "main" and s.input == "a.md"
 
 

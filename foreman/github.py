@@ -80,6 +80,9 @@ class GitHub:
     def push(self, branch: str) -> None:
         self.repo.git("push", "-u", "origin", branch)
 
+    def push_tag(self, tag: str) -> None:
+        self.repo.git("push", "origin", f"refs/tags/{tag}")
+
     def open_pr(self, branch: str, title: str, body: str, labels: list[str], closes: int | None) -> int:
         flags = self._ensure_labels(labels)
         out = self._gh("pr", "create", "--head", branch, "--base", "main", "--title", title,
@@ -127,6 +130,9 @@ class FakeGitHub:
         pass
 
     def push(self, branch: str) -> None:
+        pass
+
+    def push_tag(self, tag: str) -> None:
         pass
 
     def create_issue(self, title: str, body: str, labels: list[str]) -> int:

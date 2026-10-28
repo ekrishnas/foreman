@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 
 from foreman.config import Scenario
 from foreman.engine import open_session
@@ -123,3 +122,18 @@ def test_run_branch_and_stage_commits(tmp_path):
     log = s.run.repo.git("log", "--format=%s", "main").splitlines()
     assert "foreman: proposal" in log and "foreman: implement" in log and "foreman: archive_spec" in log
     assert s.run.repo.git("branch", "--list", "foreman/t1").strip().endswith("foreman/t1")
+
+
+def test_the_released_commit_is_tagged_when_the_scenario_asks_for_it(tmp_path):
+    s = session_for(tmp_path, tag="v1")
+    result = s.start()
+    assert result.status == "completed", result.reason
+    tagged = s.run.repo.git("rev-list", "-n", "1", "v1").strip()
+    assert tagged == s.ctx()["merge_sha"]
+
+
+def test_a_tag_that_already_points_elsewhere_stops_the_run_instead_of_moving_it(tmp_path):
+    s = session_for(tmp_path, tag="v1")
+    s.run.repo.git("tag", "v1")            # an earlier release already owns the tag
+    result = s.start()
+    assert result.status == "safe_stopped" and "v1" in result.reason

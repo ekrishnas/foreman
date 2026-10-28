@@ -81,6 +81,7 @@ def test_close_without_merge_records_reviewer_comment(fake, repo):
 
 def test_push_and_ensure_repo_are_harmless(fake):
     fake.push("foreman/r1")
+    fake.push_tag("v1")
     fake.ensure_repo("url-shortener")
 
 

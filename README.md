@@ -46,7 +46,7 @@ Exit codes: `0` completed (or paused waiting for a merge), `1` error or unmet `e
    `export FOREMAN_DB_URL=postgresql://foreman:foreman@localhost:5432/foreman`.
 5. `uv run foreman run scenarios/greenfield.yaml --mode live`. On the first greenfield run Foreman creates `../url-shortener` and the GitHub repo (private, PRs required on `main`). The run pauses at the PR; merge it on GitHub, then `foreman resume <run-id>` (or `--poll`).
 
-For the brownfield scenario, tag the greenfield result `v1`, then add the deliberate "performance refactor" commit that replaces the atomic click increment with read-modify-write and tag it `v1-regressed`.
+The greenfield scenario tags the merged commit `v1` (`tag: v1`). For the brownfield scenario, add the deliberate "performance refactor" commit on top that replaces the atomic click increment with read-modify-write, and tag it `v1-regressed`.
 
 ## How it works
 

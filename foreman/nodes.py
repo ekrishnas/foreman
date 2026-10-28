@@ -2,6 +2,7 @@
 import re
 import shutil
 import time
+from datetime import datetime, timezone
 from typing import Annotated, TypedDict
 
 from langgraph.types import Send, interrupt
@@ -276,6 +277,19 @@ def open_pr(run: Run):
     return node
 
 
+def tag_release(run: Run, sha: str) -> None:
+    """Tag the merged commit when the scenario asks for it; never move an existing tag."""
+    tag = run.scenario.tag
+    if not tag:
+        return
+    existing = run.repo.git("rev-parse", "-q", "--verify", f"refs/tags/{tag}^{{commit}}", check=False).strip()
+    if existing and existing != sha:
+        raise SafeStop(f"tag {tag} already points at {existing[:8]}, not the merged commit {sha[:8]}", stage="await_merge")
+    if not existing:
+        run.repo.git("tag", tag, sha)
+    run.github.push_tag(tag)
+
+
 def await_merge(run: Run):
     """The release gate: a human merges the PR. Pauses the graph until then."""
     def node(state: State) -> dict:
@@ -290,11 +304,11 @@ def await_merge(run: Run):
             raise SafeStop(f"PR #{pr} is still open; merge it on GitHub, then resume", stage="await_merge")
         opened = [e for e in run.store.audit_events(run.run_id) if e.event == "pr_opened"]
         if opened:
-            from datetime import datetime, timezone
             waited = (datetime.now(timezone.utc) - datetime.fromisoformat(opened[-1].ts)).total_seconds()
             run.audit("await_merge", "merge_wait", wait_s=round(waited, 3))
         sha = run.github.merged_commit(pr)
-        run.github.comment(run.issue_id, f"PR #{pr} merged ({sha[:8]}).")
+        tag_release(run, sha)
+        run.github.comment(run.issue_id, f"PR #{pr} merged ({sha[:8]})" + (f" and tagged `{run.scenario.tag}`." if run.scenario.tag else "."))
         passed(run, "await_merge", merge_sha=sha)
         return {"ctx": {"merge_sha": sha}}
     return node
