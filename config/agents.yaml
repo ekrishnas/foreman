@@ -1,0 +1,94 @@
+# Agent definitions (DESIGN.md section 6).
+# tier: small | mid | strong, mapped to a model below.
+# tools: Claude tool names; build_cmd / test_cmd expand to Bash permissions from the target profile.
+# writable: glob patterns; placeholders {change} {run_id} {option} {paths.src} {paths.tests} {paths.docs}.
+# context: the ONLY keys the prompt is built from; a trailing '?' marks a key optional.
+models:
+  small: claude-haiku-5-5
+  mid: claude-sonnet-5-5
+  strong: claude-opus-5-5
+
+agents:
+  requirements_analyst:
+    tier: strong
+    tools: [Read]
+    writable: []
+    context: [user_story, target_profile, "repo_tree?"]
+
+  architect:
+    tier: strong
+    tools: [Read, Write]
+    writable: ["openspec/changes/{change}/**"]
+    context: [requirements, "assumptions?", "clarifications?", "impacted_files?", existing_specs, "reviewer_notes?"]
+
+  implementer:
+    tier: mid
+    tools: [Read, Edit, Write, build_cmd]
+    writable: ["{paths.src}"]
+    context: [design, tasks, "reviewer_notes?", "last_failure?"]
+
+  test_writer:
+    tier: mid
+    tools: [Read, Edit, Write, test_cmd]
+    writable: ["{paths.tests}"]
+    context: [contract, acceptance_criteria, spec_scenarios]
+
+  doc_writer:
+    tier: small
+    tools: [Read, Write]
+    writable: ["{paths.docs}"]
+    context: [design, contract]
+
+  triager:
+    tier: strong
+    tools: [Read, Grep, Write]
+    writable: ["openspec/changes/{change}/**"]
+    context: [user_story, "log_excerpt?", repo_tree, existing_specs, "reviewer_notes?"]
+
+  reproducer:
+    tier: mid
+    tools: [Read, Edit, Write, test_cmd]
+    writable: ["{paths.tests}"]
+    context: [triage]
+
+  fixer:
+    tier: mid
+    tools: [Read, Edit, Write, build_cmd, test_cmd]
+    writable: ["{paths.src}"]
+    context: [triage, failing_test, failure_output, "last_failure?"]
+
+  rca_writer:
+    tier: strong
+    tools: [Read, Write]
+    writable: ["docs/rca/**"]
+    context: [triage, failing_test, fix_diff, validate_results]
+
+  framer:
+    tier: strong
+    tools: [Read]
+    writable: []
+    context: [user_story, "clarifications?", "assumptions?", repo_tree, existing_specs]
+
+  explorer:
+    tier: mid
+    tools: [Read, Grep, Write]
+    writable: ["spikes/{run_id}/{option}/**"]
+    context: [option, constraints, repo_tree]
+
+  analyst:
+    tier: strong
+    tools: [Read, Write]
+    writable: ["docs/spikes/{run_id}/**"]
+    context: [framing, explorer_notes]
+
+  pr_summarizer:
+    tier: small
+    tools: [Read]
+    writable: []
+    context: [diff_stat, change_summary, validate_results, approvals, cost_table]
+
+  observer:
+    tier: small
+    tools: [Read]
+    writable: []
+    context: [log_sample, metrics, slo]
