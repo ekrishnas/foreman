@@ -1,6 +1,6 @@
 import json
 
-from foreman.store import AuditEvent, CostEvent, MemoryStore
+from foreman.store import AuditEvent, CostEvent, FileStore, MemoryStore
 
 
 def cost(run="r1", issue=1, stage="implement", attempt=0, usd=1.0):
@@ -49,3 +49,20 @@ def test_cost_events_by_issue_span_runs():
     s.cost(cost(run="r2", issue=7))
     s.cost(cost(run="r3", issue=8))
     assert len(s.cost_events(issue_id=7)) == 2
+
+
+def test_cost_events_are_exported_next_to_the_audit_log(tmp_path):
+    s = MemoryStore(runs_dir=tmp_path)
+    s.cost(cost(run="r1", issue=7))
+    row = json.loads((tmp_path / "r1" / "cost.jsonl").read_text().splitlines()[0])
+    assert row["issue_id"] == 7 and row["cost_usd"] == 1.0
+
+
+def test_file_store_reads_back_every_run_in_the_directory(tmp_path):
+    writer = MemoryStore(runs_dir=tmp_path)
+    writer.audit(AuditEvent("r1", "feature", "x", "stage_passed", details={"a": 1}))
+    writer.cost(cost(run="r1", issue=7))
+    writer.cost(cost(run="r2", issue=7))
+    reader = FileStore(tmp_path)
+    assert reader.audit_events("r1")[0].details == {"a": 1}
+    assert len(reader.cost_events(issue_id=7)) == 2 and len(reader.cost_events(run_id="r2")) == 1

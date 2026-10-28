@@ -37,6 +37,8 @@ def _pr_body(body: str, closes: int | None) -> str:
 class GitHub:
     """Real GitHub through the authenticated `gh` CLI."""
 
+    auto_merge = False  # a human merges on GitHub; Foreman only waits
+
     def __init__(self, repo: GitRepo, runner: Callable = sh):
         self.repo = repo
         self.runner = runner
@@ -51,6 +53,9 @@ class GitHub:
         for label in labels:
             self._gh("label", "create", label, "--force")
         return [x for label in labels for x in ("--label", label)]
+
+    def login(self) -> str:
+        return self._gh("api", "user", "--jq", ".login").strip()
 
     def ensure_repo(self, name: str) -> None:
         """Create `owner/name` if missing and require PRs on main."""
@@ -99,6 +104,8 @@ class GitHub:
 
 class FakeGitHub:
     """Offline stand-in: issues and PRs are JSON files under `root`; merge is a real git merge."""
+
+    auto_merge = True  # the run's `release` decision merges (or closes) the PR in-process
 
     def __init__(self, root: Path, repo: GitRepo):
         self.root = Path(root)

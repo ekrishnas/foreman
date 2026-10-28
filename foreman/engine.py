@@ -1,8 +1,10 @@
 """Build a Run from a scenario and drive its graph to completion, a pause, or a safe-stop."""
 import importlib
+import json
 import secrets
+import sys
 import time
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
 from langgraph.checkpoint.memory import MemorySaver
@@ -18,7 +20,6 @@ from foreman.runner import Run, SafeStop
 from foreman.specs import SpecAdapter
 from foreman.store import MemoryStore
 from foreman.workers import ClaudeCodeWorker, Recorder, ReplayWorker
-import sys
 
 ROOT = Path(__file__).resolve().parent.parent
 FAKE_OPENSPEC = [sys.executable, "-m", "foreman.fake_openspec"]
@@ -55,32 +56,59 @@ def issue_from_file(path: Path) -> tuple[str, str]:
     return path.stem, path.read_text().strip()
 
 
-def make_run(scenario: Scenario, mode: str, runs_dir: Path, run_id: str | None = None,
-             store=None, recording: Path | None = None, resume: bool = False) -> Run:
+def make_checkpointer(db_url: str | None = None):
+    """Postgres checkpoints when a database is configured (durable, resumable); otherwise in memory."""
+    if not db_url:
+        return MemorySaver()
+    import psycopg
+    from langgraph.checkpoint.postgres import PostgresSaver
+    from psycopg.rows import dict_row
+    conn = psycopg.connect(db_url, autocommit=True, prepare_threshold=0, row_factory=dict_row)
+    saver = PostgresSaver(conn)
+    saver.setup()
+    return saver
+
+
+def prepare_live_target(target, make_github=GitHub) -> GitRepo:
+    """First greenfield run: create the local repo and the GitHub repo (PRs required on main) if missing."""
+    repo = GitRepo(target.repo) if (target.repo / ".git").exists() else GitRepo.init(target.repo)
+    if "origin" not in repo.git("remote").split():
+        gh = make_github(repo)
+        gh.ensure_repo(f"{gh.login()}/{target.name}")
+    return repo
+
+
+def make_run(scenario: Scenario, mode: str, runs_dir: Path, run_id: str | None = None, store=None,
+             recording: Path | None = None, issue: int | None = None, record: bool = False) -> Run:
     if mode not in MODES:
         raise ValueError(f"mode must be one of {MODES}")
     run_id = run_id or new_run_id()
     runs_dir = Path(runs_dir)
     agents, models = load_agents(ROOT / "config/agents.yaml")
-    target = load_target(ROOT / "targets" / f"{'fake' if mode == 'fake' else scenario.target}.yaml")
+    use_fake_target = mode == "fake" or scenario.target == "fake"
+    target = load_target(ROOT / "targets" / f"{'fake' if use_fake_target else scenario.target}.yaml")
 
-    if mode == "fake":
+    if use_fake_target:
         target_dir = runs_dir / run_id / "target"
-        repo = GitRepo(target_dir) if resume else make_fake_target(target_dir, scenario.start_ref)
+        repo = GitRepo(target_dir) if (target_dir / ".git").exists() else make_fake_target(target_dir, scenario.start_ref)
         target = replace(target, repo=repo.path)
+    elif mode == "live":
+        repo = prepare_live_target(target)
     else:
         repo = GitRepo(target.repo)
 
     if mode == "live":
         github, worker, spec = GitHub(repo), ClaudeCodeWorker(), SpecAdapter(["openspec"], repo.path)
-        recorder = Recorder(runs_dir / run_id / "recorded")
     else:
         github = FakeGitHub(runs_dir / run_id / "github", repo)
         worker = ReplayWorker(recording) if mode == "replay" else FakeWorker(scenario.faults)
-        spec, recorder = SpecAdapter(FAKE_OPENSPEC, repo.path), None
+        spec = SpecAdapter(FAKE_OPENSPEC, repo.path)
+    recorder = Recorder(runs_dir / run_id / "recorded") if mode == "live" or record else None
 
     human = ScriptedHuman(scenario.script) if scenario.approvals == "scripted" else TerminalHuman()
-    if isinstance(scenario.input, int):
+    if issue is not None:
+        pass  # resuming: the issue already exists
+    elif isinstance(scenario.input, int):
         issue = scenario.input
         ensure_ready(github.get_issue(issue))
     else:
@@ -89,14 +117,14 @@ def make_run(scenario: Scenario, mode: str, runs_dir: Path, run_id: str | None =
         issue = github.create_issue(title, body, [f"foreman:{scenario.workflow}"])
 
     deploy_env = {}
-    if mode == "fake":
+    if use_fake_target:
         effects = {"slo_breach": {"FOREMAN_FAKE_P95": "999"}, "errors": {"FOREMAN_FAKE_ERRORS": "30"}}
         for f in scenario.faults:
             if f.get("stage") == "observe":
                 deploy_env |= effects.get(f["kind"], {})
 
     return Run(
-        deploy_env=deploy_env, check_health=mode != "fake",
+        deploy_env=deploy_env, check_health=not use_fake_target,
         run_id=run_id, issue_id=issue, scenario=scenario, target=target, agents=agents, models=models,
         repo=repo, worker=worker, store=store or MemoryStore(runs_dir=runs_dir), github=github,
         human=human, spec=spec, runs_dir=runs_dir, recorder=recorder,
@@ -120,9 +148,21 @@ class Session:
 
 
 def open_session(scenario: Scenario, mode: str, runs_dir: Path, checkpointer=None, run_id: str | None = None,
-                 store=None, recording: Path | None = None) -> Session:
-    run = make_run(scenario, mode, runs_dir, run_id, store, recording)
+                 store=None, recording: Path | None = None, record: bool = False) -> Session:
+    run = make_run(scenario, mode, runs_dir, run_id, store, recording, record=record)
     run.repo.start_run(run.branch, scenario.start_ref)
+    run.dir.mkdir(parents=True, exist_ok=True)
+    (run.dir / "run.json").write_text(json.dumps({
+        "run_id": run.run_id, "mode": mode, "issue": run.issue_id, "scenario": asdict(scenario),
+        "recording": str(recording) if recording else None, "record": record}, indent=1))
+    return build_session(run, checkpointer)
+
+
+def resume_session(run_id: str, runs_dir: Path, checkpointer, store=None) -> Session:
+    """Rebuild a run from its saved metadata; the checkpointer supplies the graph state."""
+    meta = json.loads((Path(runs_dir) / run_id / "run.json").read_text())
+    run = make_run(Scenario(**meta["scenario"]), meta["mode"], runs_dir, run_id, store,
+                   Path(meta["recording"]) if meta["recording"] else None, issue=meta["issue"], record=meta["record"])
     return build_session(run, checkpointer)
 
 
@@ -144,7 +184,7 @@ def drive(session: Session, input_) -> Result:
             status = "observe_failed" if ctx.get("observe_ok") is False else "completed"
             return Result(status, ctx.get("observe_summary", ""), ctx.get("pr_number"))
         pr = ctx["pr_number"]
-        if not isinstance(run.github, FakeGitHub):
+        if not run.github.auto_merge:
             return Result("waiting", f"waiting for the merge of PR #{pr}; run `foreman resume {run.run_id}` after merging", pr)
         # Offline, the human's release decision is the merge.
         decision = run.human.approve("release", f"Merge PR #{pr}?")

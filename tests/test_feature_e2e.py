@@ -63,6 +63,7 @@ def test_issue_thread_is_a_status_trail(tmp_path):
     comments = json.loads((s.run.dir / "github/issues/1.json").read_text())["comments"]
     text = "\n".join(comments)
     assert "started" in text and "approved" in text and "Pull request #2 opened" in text and "merged" in text
+    assert "ready for approval" in text and "Validation passed" in text and "Observe passed" in text
 
 
 def test_audit_log_is_exported_as_jsonl(tmp_path):

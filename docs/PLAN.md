@@ -209,3 +209,14 @@ docker-compose.yml  README.md
 - [ ] Tests: `run scenarios/greenfield.yaml --mode fake` exits 0 and prints PR number and run cost; `cost --issue 1` sums two runs; integration: `PostgresSaver` pause at `await_merge` and resume from a new connection, `PostgresStore` views return rows (skipped when Docker or Postgres is unavailable).
 - [ ] README: quick start, modes, prerequisites for live (`claude`, `gh auth login`, pinned `openspec`), how to create `v1-regressed`, known simplifications (serialised agent calls, regex secret scan, `openspec` CLI flags unverified against a live install).
 - [ ] Run full suite `uv run pytest -q`, commit and push.
+
+---
+
+## Implementation notes (what changed while building)
+
+- `PostgresStore` and the SQL views landed in Task 12, not Task 3, so they could be tested against a real Postgres.
+- Stages can run in a `sandbox` (an empty directory): the Observer uses it so it never sees source.
+- Attempt numbers are a per-stage-instance call counter taken from the cost table, so retries, fallbacks and validation loop-backs all show up as `attempt > 0` in the retry-spend figure.
+- A failed validation re-enters the parallel fan-out; the unchanged stages are skipped by input hash instead of re-run.
+- `FileStore` reads the `audit.jsonl` / `cost.jsonl` exports so `foreman metrics` and `foreman cost` work without a database.
+- Added beyond the plan: `foreman resume --poll`, status comments on the issue at every gate, `prepare_live_target` (creates the local and GitHub repos on the first greenfield run), `RunRefused` for issues awaiting `foreman:ready`.

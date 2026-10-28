@@ -166,6 +166,7 @@ def approve_proposal(run: Run):
     def node(state: State) -> dict:
         ctx = state["ctx"]
         summary = f"Change {ctx['change_id']}\n\n{ctx['change_summary']}\n\nTasks:\n{ctx['tasks']}"
+        run.github.comment(run.issue_id, f"Proposal `{ctx['change_id']}` is ready for approval.\n\nTasks:\n{ctx['tasks']}")
         started = time.monotonic()
         d = run.human.approve("proposal", summary)
         run.audit("approve_proposal", "approval", kind="proposal", approved=d.approved, note=d.note,
@@ -227,10 +228,12 @@ def validate_feature_checks(run: Run, ctx: dict, min_tests: int = 1) -> tuple[li
 
 def finish_validation(run: Run, ctx: dict, failures: list[str], results: str) -> dict:
     if not failures:
+        run.github.comment(run.issue_id, f"Validation passed:\n```\n{results}\n```")
         passed(run, "validate", results=results)
         return {"ctx": {"validated": True, "validate_results": results}}
     loops = ctx.get("validate_loops", 0) + 1
     reason = "; ".join(f.splitlines()[0] for f in failures)
+    run.github.comment(run.issue_id, f"Validation failed (attempt {loops}): {reason}\n```\n{results}\n```")
     run.audit("validate", "attempt_failed", attempt=loops, reason=reason)
     if loops > run.max_retries:
         raise SafeStop(f"validation failed {loops} times: {reason}", rollback=True, stage="validate")

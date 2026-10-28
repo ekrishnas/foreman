@@ -143,6 +143,12 @@ def test_gh_failure_raises_with_output(repo):
         GitHub(repo, runner=failing).comment(1, "x")
 
 
+def test_login_asks_gh_for_the_authenticated_user(repo):
+    gh, rec = gh_with({"gh api user": "octocat\n"}, repo)
+    assert gh.login() == "octocat"
+    assert ["gh", "api", "user", "--jq", ".login"] in rec.calls
+
+
 def test_ensure_repo_creates_and_protects_main_when_missing(repo):
     def runner(cmd, cwd, input=None, **kw):
         runner.calls.append(cmd)

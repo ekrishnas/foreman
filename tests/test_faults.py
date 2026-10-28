@@ -107,3 +107,9 @@ def test_resume_after_a_parallel_branch_fails_does_not_redo_the_others(tmp_path)
     assert sum(1 for c in rows if c.agent == "doc_writer") == 1
     commits = session.run.repo.git("log", "--format=%s", "main").splitlines()
     assert commits.count("foreman: implement") == 1 and commits.count("foreman: docs") == 1
+
+
+def test_failed_validation_is_reported_on_the_issue_thread(tmp_path):
+    session, _ = run_scenario("retry-then-success", tmp_path)
+    comments = session.run.github._read("issues", 1)["comments"]
+    assert any("Validation failed" in c for c in comments) and any("Validation passed" in c for c in comments)
