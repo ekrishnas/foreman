@@ -1,6 +1,7 @@
 """Prompt assembly: an agent sees only the context keys listed for it, plus its boundaries."""
 from foreman.config import Agent
 from foreman.metrics import cost_table
+from foreman.pr import approvals_text
 from foreman.policy import resolve_writable
 
 
@@ -34,6 +35,10 @@ def _cost_table(run, ctx):
     return cost_table(run.store.cost_events(run_id=run.run_id), run.store.cost_events(issue_id=run.issue_id))
 
 
+def _approvals(run, ctx):
+    return approvals_text(run)
+
+
 # Keys the runner can compute itself when the context bag does not hold them.
 PROVIDERS = {
     "repo_tree": _repo_tree,
@@ -41,6 +46,7 @@ PROVIDERS = {
     "existing_specs": _existing_specs,
     "diff_stat": _diff_stat,
     "cost_table": _cost_table,
+    "approvals": _approvals,
 }
 
 

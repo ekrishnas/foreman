@@ -95,6 +95,15 @@ class GitRepo:
                 continue
         return "\n".join(parts)
 
+    def branch_changes(self, base: str) -> list[Change]:
+        """Net changes from `base` to HEAD."""
+        out = self.git("diff", "--name-status", "--no-renames", base, "HEAD")
+        return [Change(line[0], line.split("\t", 1)[1]) for line in out.splitlines() if "\t" in line]
+
+    def branch_added_text(self, base: str) -> str:
+        diff = self.git("diff", "-U0", "--no-color", base, "HEAD")
+        return "\n".join(ln[1:] for ln in diff.splitlines() if ln.startswith("+") and not ln.startswith("+++"))
+
     def commit(self, message: str) -> str:
         self.git("add", "-A")
         self.git("commit", "-q", "--allow-empty", "-m", message)

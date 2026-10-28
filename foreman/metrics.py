@@ -29,7 +29,7 @@ def run_metrics(audit: list[AuditEvent], cost: list[CostEvent]) -> dict:
         "rollbacks": sum(e.event == "rollback" for e in audit),
         "mttr_s": sum(recoveries) / len(recoveries) if recoveries else 0,
         "latency_s": (max(times) - min(times)).total_seconds() if times else 0,
-        "human_wait_s": sum(e.details.get("wait_s", 0) for e in audit if e.event in ("approval", "merge_wait")),
+        "human_wait_s": sum(e.details.get("wait_s", 0) for e in audit if e.event in ("approval", "merge_wait", "clarified")),
         "cost_usd": round(sum(c.cost_usd for c in cost), 6),
         "retry_cost_usd": round(sum(c.cost_usd for c in cost if c.attempt > 0), 6),
     }

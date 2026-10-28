@@ -67,6 +67,17 @@ def test_sh_puts_current_python_first_on_path(tmp_path):
     assert Path(r.out.strip()).resolve() == Path(sys.executable).resolve()
 
 
+@pytest.mark.parametrize("out,expected", [
+    ("....\n3 passed in 0.10s", 3),
+    ("FAILED x\n1 failed, 2 passed in 0.10s", 2),
+    ("Passed!  - Failed:     0, Passed:    12, Skipped:     0, Total:    12", 12),
+    ("no tests ran", 0),
+])
+def test_count_tests_reads_pytest_and_dotnet_summaries(out, expected):
+    from foreman.util import count_tests
+    assert count_tests(out) == expected
+
+
 def test_sh_accepts_an_argv_list_without_a_shell(tmp_path):
     assert sh(["echo", "a b;c"], cwd=tmp_path).out.strip() == "a b;c"
 

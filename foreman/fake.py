@@ -35,7 +35,10 @@ class FakeWorker:
 
     def __init__(self, faults: list[dict] | None = None, behaviors: dict[str, Behavior] | None = None):
         self.faults = faults or []
-        self.behaviors = BEHAVIORS if behaviors is None else behaviors
+        if behaviors is None:
+            import foreman.fake_behaviors  # noqa: F401  (registers the default behaviours)
+            behaviors = BEHAVIORS
+        self.behaviors = behaviors
 
     def _fault(self, req: WorkerRequest) -> dict | None:
         for f in self.faults:

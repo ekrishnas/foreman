@@ -106,3 +106,9 @@ def section(text: str, heading: str) -> str:
                     break
             return "\n".join(lines[i + 1:end]).strip()
     return ""
+
+
+def count_tests(output: str) -> int:
+    """Passed-test count from a pytest or `dotnet test` summary (0 when none is found)."""
+    m = re.search(r"(\d+) passed", output) or re.search(r"Passed:\s+(\d+)", output)
+    return int(m.group(1)) if m else 0

@@ -21,10 +21,11 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 class SafeStop(Exception):
     """Stop the run: state is persisted, the reason recorded, the run is resumable."""
 
-    def __init__(self, reason: str, rollback: bool = False):
+    def __init__(self, reason: str, rollback: bool = False, stage: str = ""):
         super().__init__(reason)
         self.reason = reason
         self.rollback = rollback
+        self.stage = stage
 
 
 @dataclass(eq=False)
@@ -98,8 +99,16 @@ def _check(run: Run, stage: Stage, ctx: dict, text: str, writable: list[str], na
 
 
 def run_stage(run: Run, stage: Stage, ctx: dict, done: dict, instance: str = "") -> dict:
-    agent = run.agents[stage.agent]
     name = f"{stage.name}/{instance}" if instance else stage.name
+    try:
+        return _run_stage(run, stage, ctx, done, instance, name)
+    except SafeStop as e:
+        e.stage = e.stage or name
+        raise
+
+
+def _run_stage(run: Run, stage: Stage, ctx: dict, done: dict, instance: str, name: str) -> dict:
+    agent = run.agents[stage.agent]
     keys = agent.context_keys()
 
     missing = [k for k, required in keys if required and k not in ctx and k not in PROVIDERS]

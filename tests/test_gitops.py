@@ -107,6 +107,19 @@ def test_diff_stat_and_text_against_base(repo):
     assert "print(1)" in repo.diff_text(base, ["src/a.py"])
 
 
+def test_branch_changes_and_added_text_span_all_commits_since_base(repo):
+    repo.start_run("foreman/r1", "main")
+    base = repo.head()
+    write(repo, "src/a.py", "first\n")
+    repo.commit("a")
+    write(repo, "src/b.py", "second-line\n")
+    (repo.path / "src/a.py").unlink()
+    repo.commit("b")
+    changes = {c.path: c.status for c in repo.branch_changes(base)}
+    assert changes == {"src/b.py": "A"}
+    assert "second-line" in repo.branch_added_text(base)
+
+
 def test_tree_lists_tracked_files(repo):
     write(repo, "src/a.py", "x")
     repo.commit("a")
