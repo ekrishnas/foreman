@@ -1,0 +1,10 @@
+name: rollback
+workflow: feature
+input: scenarios/inputs/feature-url-shortener.md
+target: fake
+approvals: scripted
+faults:
+  - {stage: implement, calls: [0, 1, 2], kind: break_tests}
+expect:
+  status: safe_stopped
+  audit: [attempt_failed, retry, rollback, safe_stop]

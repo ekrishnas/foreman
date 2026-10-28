@@ -1,0 +1,11 @@
+name: fallback
+workflow: feature
+input: scenarios/inputs/feature-url-shortener.md
+target: fake
+approvals: scripted
+faults:
+  - {stage: tests, calls: [0, 1, 2], kind: no_output}
+expect:
+  status: completed
+  pr_state: merged
+  audit: [attempt_failed, retry, fallback]

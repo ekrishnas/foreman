@@ -1,0 +1,10 @@
+name: policy-block
+workflow: feature
+input: scenarios/inputs/feature-url-shortener.md
+target: fake
+approvals: scripted
+faults:
+  - {stage: implement, all: true, kind: bad_path}
+expect:
+  status: safe_stopped
+  audit: [attempt_failed, safe_stop]
