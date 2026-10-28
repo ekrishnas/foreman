@@ -25,6 +25,16 @@ FAKE_OPENSPEC = [sys.executable, "-m", "foreman.fake_openspec"]
 MODES = ("fake", "live", "replay")
 
 
+class RunRefused(Exception):
+    pass
+
+
+def ensure_ready(issue) -> None:
+    """Issues Foreman filed itself (e.g. after a failed observe) wait for a human to label them ready."""
+    if "foreman:needs-approval" in issue.labels and "foreman:ready" not in issue.labels:
+        raise RunRefused(f"issue #{issue.number} awaits human approval: label it foreman:ready before Foreman picks it up")
+
+
 @dataclass
 class Result:
     status: str  # completed | safe_stopped | waiting | observe_failed
@@ -72,12 +82,21 @@ def make_run(scenario: Scenario, mode: str, runs_dir: Path, run_id: str | None =
     human = ScriptedHuman(scenario.script) if scenario.approvals == "scripted" else TerminalHuman()
     if isinstance(scenario.input, int):
         issue = scenario.input
+        ensure_ready(github.get_issue(issue))
     else:
         path = Path(scenario.input)
         title, body = issue_from_file(path if path.is_absolute() else ROOT / path)
         issue = github.create_issue(title, body, [f"foreman:{scenario.workflow}"])
 
+    deploy_env = {}
+    if mode == "fake":
+        effects = {"slo_breach": {"FOREMAN_FAKE_P95": "999"}, "errors": {"FOREMAN_FAKE_ERRORS": "30"}}
+        for f in scenario.faults:
+            if f.get("stage") == "observe":
+                deploy_env |= effects.get(f["kind"], {})
+
     return Run(
+        deploy_env=deploy_env, check_health=mode != "fake",
         run_id=run_id, issue_id=issue, scenario=scenario, target=target, agents=agents, models=models,
         repo=repo, worker=worker, store=store or MemoryStore(runs_dir=runs_dir), github=github,
         human=human, spec=spec, runs_dir=runs_dir, recorder=recorder,

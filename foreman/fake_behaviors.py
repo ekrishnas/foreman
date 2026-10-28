@@ -263,3 +263,11 @@ def analyst(req, fault):
         doc = re.sub(r"## Trade-off matrix.*?(?=## Recommendation)", "", doc, flags=re.S)
     put(req, f"docs/spikes/{run_id}/analysis.md", doc)
     return "Wrote the analysis."
+
+
+@behavior("observer")
+def observer(req, fault):
+    metrics = prompt_section(req.prompt, "metrics")
+    return (f"## Anomalies\n- The smoke run breached the SLO: {metrics}\n\n"
+            "## Probable causes\n- Probable cause: a latency regression on the resolve path.\n\n"
+            "## Suggested next step\n- Keep the revert PR ready and reproduce under load.")

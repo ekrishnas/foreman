@@ -191,6 +191,22 @@ def test_instances_have_their_own_attempt_counter_and_stage_key(make_run):
     assert {c.stage for c in run.store.cost_events(run_id="r1")} == {"explore/opt-1", "explore/opt-2"}
 
 
+def test_sandbox_stage_runs_outside_the_repo_and_needs_no_foreman_branch(make_run):
+    watcher = Agent("observer", "small", ["Read"], [], [])
+    seen = []
+
+    def behavior(req, fault):
+        seen.append(req.cwd)
+        return "" if len(seen) == 1 else "summary"
+
+    run = make_run({"observer": watcher}, {"observer": behavior})
+    run.repo.git("checkout", "-q", "main")          # post-merge: not on a foreman/ branch
+    gate = lambda r, c, text: None if text else "empty summary"
+    out = run_stage(run, Stage("observe_summary", "observer", produces="s", gate=gate, commit=False, sandbox=True), {}, {})
+    assert out["ctx"]["s"] == "summary"
+    assert all(cwd != run.repo.path and cwd.is_dir() for cwd in seen) and len(seen) == 2
+
+
 def test_concurrent_stages_do_not_mix_their_diffs(make_run):
     a = Agent("a", "mid", ["Write"], ["a/**"], [])
     b = Agent("b", "mid", ["Write"], ["b/**"], [])

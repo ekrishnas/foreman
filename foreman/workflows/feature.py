@@ -1,8 +1,9 @@
 """feature: intake -> requirements -> [clarify] -> proposal -> approve -> implement || tests || docs
--> validate -> archive_spec -> pr_summary -> open_pr -> await_merge   (DESIGN.md section 5.1)"""
+-> validate -> archive_spec -> pr_summary -> open_pr -> await_merge -> observe   (DESIGN.md section 5.1)"""
 from langgraph.graph import END, START, StateGraph
 
 from foreman import nodes as n
+from foreman.observe import observe
 
 PARALLEL = ["implement", "tests", "docs"]
 
@@ -22,6 +23,7 @@ def build(run) -> StateGraph:
     g.add_node("pr_summary", n.agent_node(run, n.PR_SUMMARY))
     g.add_node("open_pr", n.open_pr(run))
     g.add_node("await_merge", n.await_merge(run))
+    g.add_node("observe", observe(run))
 
     g.add_edge(START, "intake")
     g.add_edge("intake", "requirements")
@@ -40,5 +42,6 @@ def build(run) -> StateGraph:
     g.add_edge("archive_spec", "pr_summary")
     g.add_edge("pr_summary", "open_pr")
     g.add_edge("open_pr", "await_merge")
-    g.add_edge("await_merge", END)
+    g.add_edge("await_merge", "observe")
+    g.add_edge("observe", END)
     return g

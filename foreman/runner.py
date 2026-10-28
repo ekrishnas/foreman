@@ -46,6 +46,8 @@ class Run:
     prompts_dir: Path = PROJECT_ROOT / "prompts"
     recorder: Recorder | None = None
     max_retries: int = 2
+    deploy_env: dict = field(default_factory=dict)  # extra env for the deploy/smoke/stop commands
+    check_health: bool = True  # wait for the target's health_url before smoke traffic
     # One lock around worker call, diff check and commit, so parallel graph branches
     # never see each other's uncommitted changes.
     lock: threading.Lock = field(default_factory=threading.Lock)
@@ -77,11 +79,12 @@ class Stage:
     gate: Callable[[Run, dict, str], str | None] | None = None  # exit gate: failure message or None
     after: Callable[[Run, dict, str], dict] | None = None  # runs before the commit; returns ctx updates
     commit: bool = True
+    sandbox: bool = False  # run the worker in an empty directory: it never sees the repository
 
 
 def _check(run: Run, stage: Stage, ctx: dict, text: str, writable: list[str], name: str) -> tuple[str | None, list]:
     """Policy, exit gate, then human approval for high-impact changes. Returns (failure, findings)."""
-    findings = check_changes(run.repo.changes(), run.repo.added_text(), writable, run.target)
+    findings = [] if stage.sandbox else check_changes(run.repo.changes(), run.repo.added_text(), writable, run.target)
     blocking = [f for f in findings if f.blocking]
     if blocking:
         return "policy: " + "; ".join(f.detail for f in blocking), findings
@@ -122,6 +125,8 @@ def _run_stage(run: Run, stage: Stage, ctx: dict, done: dict, instance: str, nam
 
     writable = writable_for(run, agent, ctx, instance)
     tools = allowed_tools(agent, run.target)
+    cwd = run.dir / "sandbox" if stage.sandbox else run.repo.path
+    cwd.mkdir(parents=True, exist_ok=True)
     plan = [agent.tier] * (1 + run.max_retries)
     if agent.tier != "strong":
         plan.append("strong")  # one fallback attempt on the strongest tier
@@ -140,11 +145,11 @@ def _run_stage(run: Run, stage: Stage, ctx: dict, done: dict, instance: str, nam
             except MissingContext as e:
                 raise SafeStop(f"{name}: entry gate failed, missing context: {e}") from e
             key = slug(f"{name}-{call}")
-            result = run.worker.run(WorkerRequest(agent, model, prompt, run.repo.path, key, stage.name, call, tools))
+            result = run.worker.run(WorkerRequest(agent, model, prompt, cwd, key, stage.name, call, tools))
             run.store.cost(CostEvent(run.run_id, run.issue_id, run.workflow, name, agent.name, call, model,
                                      result.input_tokens, result.output_tokens, result.cost_usd, result.duration_ms))
             if run.recorder:
-                run.recorder.save(key, result, run.repo.snapshot())
+                run.recorder.save(key, result, {} if stage.sandbox else run.repo.snapshot())
 
             findings = []
             failure = f"worker error: {result.error}" if result.error else None
@@ -160,9 +165,10 @@ def _run_stage(run: Run, stage: Stage, ctx: dict, done: dict, instance: str, nam
                           inputs=inputs, output=output, commit=commit, findings=[f.detail for f in findings])
                 return {"ctx": updates, "done": {name: {"inputs": inputs, "output": output}}}
 
-            try:
-                run.repo.reset_hard()
-            except RepoError as e:
-                raise SafeStop(f"{name}: {e}") from e
+            if not stage.sandbox:
+                try:
+                    run.repo.reset_hard()
+                except RepoError as e:
+                    raise SafeStop(f"{name}: {e}") from e
             run.audit(name, "attempt_failed", attempt=call, model=model, reason=failure)
     raise SafeStop(f"{name} failed after {len(plan)} attempts: {failure}")
