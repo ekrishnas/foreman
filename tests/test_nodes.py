@@ -4,7 +4,7 @@ import pytest
 
 from foreman.config import load_agents
 from foreman.nodes import (
-    gate_requirements, parse_bullets, tick_tasks, validate_feature_checks,
+    gate_requirements, parse_bullets, parse_options, split_story, tick_tasks, validate_feature_checks,
 )
 from foreman.runner import SafeStop
 
@@ -131,3 +131,42 @@ def test_validate_enforces_a_minimum_test_count(make_run, repo):
     ctx = {"change_id": "c-1", "base_commit": repo.git("rev-parse", "HEAD~1").strip()}
     failures, results = validate_feature_checks(run, ctx, min_tests=3)
     assert any("test count" in f for f in failures) and "tests: 1 passed (need 3)" in results
+
+
+OPTIONS = """## Context
+c
+## Options
+### Option 1: Nightly batch
+Body one.
+More.
+### 2. Event stream
+Body two.
+### option-3: Counters
+Body three.
+## Constraints
+- c
+"""
+
+
+def test_parse_options_numbers_by_position_and_strips_prefixes():
+    opts = parse_options(OPTIONS)
+    assert [(o["id"], o["title"]) for o in opts] == [
+        ("option-1", "Nightly batch"), ("option-2", "Event stream"), ("option-3", "Counters")]
+    assert opts[0]["body"] == "Body one.\nMore."
+
+
+def test_parse_options_without_an_options_section_is_empty():
+    assert parse_options("## Context\nx") == []
+
+
+def test_split_story_uses_the_heading_as_title_and_the_rest_as_body():
+    assert split_story("# Track clicks\n\nAs a user I want x.") == ("Track clicks", "As a user I want x.")
+
+
+def test_split_story_without_heading_uses_the_first_line():
+    assert split_story("As a user I want x.\nMore") == ("As a user I want x.", "As a user I want x.\nMore")
+
+
+def test_split_story_accepts_a_heading_of_any_level():
+    assert split_story("### Track clicks\n\nAs a user I want x.\n\n#### Acceptance criteria\n- a") == (
+        "Track clicks", "As a user I want x.\n\n#### Acceptance criteria\n- a")

@@ -186,3 +186,80 @@ def rca_writer(req, fault):
     issue = re.search(r"- Issue number: (\d+)", req.prompt).group(1)
     put(req, f"docs/rca/{issue}.md", RCA)
     return "Wrote the RCA."
+
+
+ANALYSIS_DOC = """# Link analytics spike
+
+## Context
+The team wants to understand how short links are used.
+
+## Assumptions
+{assumptions}
+
+## Options
+- option-1: nightly batch job
+- option-2: event stream
+- option-3: Postgres counters with rollups
+
+## Trade-off matrix
+| Option | Complexity | Cost | Performance | Risk | Operability |
+|---|---|---|---|---|---|
+| option-1 | low | low | hourly lag | low | easy |
+| option-2 | high | high | real time | medium | hard |
+| option-3 | medium | low | near real time | low | easy |
+
+## Recommendation
+Build option-3: Postgres counters with periodic rollups. It needs no new infrastructure.
+
+## Open questions
+- How long must raw clicks be retained?
+
+## Draft user story
+### Track clicks per day for each short link
+
+As a link owner I want to see clicks per day for each of my links, so that I can tell which links are used.
+
+#### Acceptance criteria
+- Clicks are counted per link per day
+- The current day is at most one hour stale
+"""
+
+
+@behavior("framer")
+def framer(req, fault):
+    assumed = prompt_section(req.prompt, "assumptions")
+    options = [
+        ("Nightly batch job", "Aggregate the click table once a night."),
+        ("Event stream", "Publish every click to a stream and aggregate downstream."),
+        ("Postgres counters with rollups", "Increment counters in Postgres and roll them up hourly."),
+    ]
+    if fault == "too_many_options":
+        options.append(("A fourth idea", "One option too many."))
+    out = ["## Context", "The team wants link analytics but the scope is unclear."]
+    if assumed:
+        out += ["", "## Assumptions", assumed]
+    out += ["", "## Options"]
+    for i, (title, body) in enumerate(options, 1):
+        out += [f"### Option {i}: {title}", body, ""]
+    out += ["## Constraints", "- Must run on the existing Postgres", "- No new infrastructure this quarter"]
+    return "\n".join(out)
+
+
+@behavior("explorer")
+def explorer(req, fault):
+    run_id, option = re.search(r"spikes/([^/\s]+)/([^/\s]+)/\*\*", req.prompt).groups()
+    title = prompt_section(req.prompt, "option").splitlines()[0]
+    put(req, f"spikes/{run_id}/{option}/notes.md", f"# Notes for {option}: {title}\n\n- Complexity, cost and risk assessed.\n")
+    if fault == "cross_write":
+        put(req, f"spikes/{run_id}/other-option/stolen.md", "outside my directory\n")
+    return f"Explored {option}."
+
+
+@behavior("analyst")
+def analyst(req, fault):
+    run_id = re.search(r"docs/spikes/([^/\s]+)/\*\*", req.prompt).group(1)
+    doc = ANALYSIS_DOC.format(assumptions="- Hourly updates are acceptable")
+    if fault == "missing_matrix":
+        doc = re.sub(r"## Trade-off matrix.*?(?=## Recommendation)", "", doc, flags=re.S)
+    put(req, f"docs/spikes/{run_id}/analysis.md", doc)
+    return "Wrote the analysis."

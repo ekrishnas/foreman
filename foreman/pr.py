@@ -49,7 +49,7 @@ def risks_text(run, ctx: dict) -> str:
 
 def build_body(run, ctx: dict, narrative: str) -> str:
     link = f"Linked issue: #{ctx['issue_number']}"
-    if ctx.get("change_id"):
+    if ctx.get("change_id") and run.workflow != "spike":
         link += f" · OpenSpec change: `{ctx['change_id']}`"
     sections = [
         f"## Summary\n{narrative.strip() or '(no narrative produced)'}\n\n{link}",
