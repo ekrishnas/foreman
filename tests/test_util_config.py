@@ -67,6 +67,24 @@ def test_sh_puts_current_python_first_on_path(tmp_path):
     assert Path(r.out.strip()).resolve() == Path(sys.executable).resolve()
 
 
+def test_sh_accepts_an_argv_list_without_a_shell(tmp_path):
+    assert sh(["echo", "a b;c"], cwd=tmp_path).out.strip() == "a b;c"
+
+
+def test_sh_feeds_stdin(tmp_path):
+    assert sh("cat", cwd=tmp_path, input="hello").out == "hello"
+
+
+def test_sh_env_allowlist_drops_everything_else(tmp_path, monkeypatch):
+    monkeypatch.setenv("SECRET_X", "1")
+    out = sh("env", cwd=tmp_path, keep_env=["HOME"]).out
+    assert "SECRET_X" not in out and "PATH=" in out
+
+
+def test_sh_missing_executable_gives_127(tmp_path):
+    assert sh(["/definitely/not/here"], cwd=tmp_path).code == 127
+
+
 def test_load_agents_has_the_fourteen_design_agents():
     agents, models = load_agents(ROOT / "config/agents.yaml")
     assert len(agents) == 14

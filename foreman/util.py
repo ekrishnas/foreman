@@ -14,16 +14,28 @@ class ShResult:
     out: str
 
 
-def sh(cmd: str, cwd: Path, env: dict | None = None, timeout: int | None = None) -> ShResult:
-    """Run a shell command; stdout and stderr merged. Timeout gives code 124."""
-    e = {**os.environ, **(env or {})}
+def sh(
+    cmd: str | list[str], cwd: Path, env: dict | None = None, timeout: int | None = None,
+    input: str | None = None, keep_env: list[str] | None = None,
+) -> ShResult:
+    """Run a command (shell string or argv list); stdout and stderr merged.
+
+    Timeout gives code 124, a missing executable 127. `keep_env` is an allowlist of
+    inherited variables (PATH is always kept); None inherits everything.
+    """
+    base = os.environ if keep_env is None else {k: v for k, v in os.environ.items() if k in keep_env or k == "PATH"}
+    e = {**base, **(env or {})}
     e["PATH"] = os.path.dirname(sys.executable) + os.pathsep + e.get("PATH", "")
-    p = subprocess.Popen(
-        cmd, shell=True, cwd=cwd, env=e, text=True, errors="replace",
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True,
-    )
     try:
-        out, _ = p.communicate(timeout=timeout)
+        p = subprocess.Popen(
+            cmd, shell=isinstance(cmd, str), cwd=cwd, env=e, text=True, errors="replace",
+            stdin=subprocess.PIPE if input is not None else subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True,
+        )
+    except FileNotFoundError as ex:
+        return ShResult(127, str(ex))
+    try:
+        out, _ = p.communicate(input=input, timeout=timeout)
     except subprocess.TimeoutExpired:
         os.killpg(p.pid, signal.SIGKILL)
         out, _ = p.communicate()
