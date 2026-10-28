@@ -112,3 +112,15 @@ def count_tests(output: str) -> int:
     """Passed-test count from a pytest or `dotnet test` summary (0 when none is found)."""
     m = re.search(r"(\d+) passed", output) or re.search(r"Passed:\s+(\d+)", output)
     return int(m.group(1)) if m else 0
+
+
+def count_failed(output: str) -> int:
+    m = re.search(r"(\d+) failed", output) or re.search(r"Failed:\s+(\d+)", output)
+    return int(m.group(1)) if m else 0
+
+
+def count_total(output: str) -> int:
+    """All tests that ran (passed, failed, errored, skipped)."""
+    if m := re.search(r"Total:\s+(\d+)", output):
+        return int(m.group(1))
+    return sum(int(n) for n in re.findall(r"(\d+) (?:passed|failed|errors?|skipped)", output))

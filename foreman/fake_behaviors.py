@@ -2,7 +2,7 @@
 import re
 
 from foreman.fake import behavior
-from foreman.fake_target import SHORTENER, TESTS
+from foreman.fake_target import SHORTENER, SHORTENER_REGRESSED, TESTS
 
 BROKEN_SHORTENER = SHORTENER.replace("        self._clicks[code] += 1\n", "")
 
@@ -97,3 +97,92 @@ def doc_writer(req, fault):
 def pr_summarizer(req, fault):
     summary = prompt_section(req.prompt, "change_summary").replace("\n", " ")[:200]
     return f"Implements the approved OpenSpec change: {summary}"
+
+
+MODIFIED_SPEC = """## MODIFIED Requirements
+### Requirement: Count clicks
+The system SHALL count one click each time a short code is resolved and SHALL report the current count, never a stale one.
+
+#### Scenario: Stats stay current
+- **WHEN** a code is resolved, its stats are read, and the code is resolved again
+- **THEN** the second stats read reports 2 clicks
+"""
+
+REPRO_TEST = """from shortener import Shortener
+
+
+def test_stats_reflect_clicks_made_after_a_previous_read():
+    s = Shortener()
+    code = s.shorten("https://example.com/a")
+    s.resolve(code)
+    assert s.clicks(code) == 1
+    s.resolve(code)
+    assert s.clicks(code) == 2
+"""
+
+RCA = """# RCA: stale click counts
+
+## Summary
+The stats endpoint reported stale click counts after the counter had been read once.
+
+## Impact
+Anyone watching a link's statistics saw numbers that stopped moving.
+
+## Timeline
+- A performance refactor cached the counter on first read.
+- A user reported stale counts.
+- The bug was reproduced with a failing test and fixed.
+
+## Root cause
+`Shortener.clicks` cached the counter on first read and never invalidated the cache.
+
+## Why it was missed
+No test read the counter, resolved again, and read it a second time.
+
+## Fix
+`clicks` now reads the live counter.
+
+## Prevention
+The new test covers reading stats between clicks; performance changes need a read-after-write test.
+"""
+
+
+@behavior("triager")
+def triager(req, fault):
+    change = re.search(r"- Change id: (\S+)", req.prompt).group(1)
+    notes = prompt_section(req.prompt, "reviewer_notes")
+    extra = f"\n- Reviewer asked: {notes}" if notes else ""
+    base = f"openspec/changes/{change}"
+    put(req, f"{base}/proposal.md", (
+        "## Why\nThe stats endpoint shows stale click counts once the counter has been read.\n\n"
+        f"## What Changes\n- Read the live counter instead of a cached copy{extra}\n\n"
+        "## Impact\n- Affected module: src/shortener.py (`Shortener.clicks`)\n\n"
+        "## Root cause hypothesis\nThe counter is cached on first read and never invalidated.\n"))
+    put(req, f"{base}/design.md", f"## Context\nBug report triaged from the issue.{extra}\n")
+    put(req, f"{base}/tasks.md", (
+        "## 1. Reproduce\n- [ ] 1.1 Add a failing test for stale counts\n\n"
+        "## 2. Fix\n- [ ] 2.1 Read the live counter in clicks()\n"))
+    put(req, f"{base}/specs/shortener/spec.md", MODIFIED_SPEC)
+    return f"Triaged {change}."
+
+
+@behavior("reproducer")
+def reproducer(req, fault):
+    passing = "def test_placeholder():\n    assert True\n"
+    put(req, "tests/test_click_counts.py", passing if fault == "passing_test" else REPRO_TEST)
+    return "Added a test for the bug.\nDONE: 1.1"
+
+
+@behavior("fixer")
+def fixer(req, fault):
+    put(req, "src/shortener.py", SHORTENER_REGRESSED if fault == "break_tests" else SHORTENER)
+    if fault == "delete_test":
+        (req.cwd / "tests/test_click_counts.py").unlink(missing_ok=True)
+    return "Fixed the stale counter.\nDONE: 2.1"
+
+
+@behavior("rca_writer")
+def rca_writer(req, fault):
+    issue = re.search(r"- Issue number: (\d+)", req.prompt).group(1)
+    put(req, f"docs/rca/{issue}.md", RCA)
+    return "Wrote the RCA."

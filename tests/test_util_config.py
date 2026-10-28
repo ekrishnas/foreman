@@ -78,6 +78,18 @@ def test_count_tests_reads_pytest_and_dotnet_summaries(out, expected):
     assert count_tests(out) == expected
 
 
+@pytest.mark.parametrize("out,failed,total", [
+    ("1 failed, 4 passed in 0.2s", 1, 5),
+    ("4 passed in 0.2s", 0, 4),
+    ("1 failed, 3 passed, 1 skipped in 1s", 1, 5),
+    ("Failed!  - Failed:     2, Passed:    12, Skipped:     0, Total:    14", 2, 14),
+    ("garbage", 0, 0),
+])
+def test_count_failed_and_total(out, failed, total):
+    from foreman.util import count_failed, count_total
+    assert (count_failed(out), count_total(out)) == (failed, total)
+
+
 def test_sh_accepts_an_argv_list_without_a_shell(tmp_path):
     assert sh(["echo", "a b;c"], cwd=tmp_path).out.strip() == "a b;c"
 

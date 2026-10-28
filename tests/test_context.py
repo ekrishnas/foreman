@@ -78,3 +78,9 @@ def test_cost_table_provider_uses_run_and_issue_costs(make_run):
     run.store.cost(CostEvent("old", 1, "feature", "x", "implementer", 0, "m", 1, 1, 3.0, 1))
     text = prompt(run, agent, {})
     assert "$2.00" in text and "$5.00" in text
+
+
+def test_boundaries_name_the_issue_number(make_run):
+    run = make_run({"implementer": IMPL})
+    text = prompt(run, IMPL, {"design": "D", "tasks": "T", "issue_number": 42})
+    assert "Issue number: 42" in text

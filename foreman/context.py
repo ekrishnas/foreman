@@ -35,6 +35,13 @@ def _cost_table(run, ctx):
     return cost_table(run.store.cost_events(run_id=run.run_id), run.store.cost_events(issue_id=run.issue_id))
 
 
+def _fix_diff(run, ctx):
+    if not ctx.get("base_commit"):
+        return None
+    src_dir = run.target.paths["src"].rstrip("*/")
+    return run.repo.diff_text(ctx["base_commit"], [src_dir]) or "(no source changes)"
+
+
 def _approvals(run, ctx):
     return approvals_text(run)
 
@@ -47,6 +54,7 @@ PROVIDERS = {
     "diff_stat": _diff_stat,
     "cost_table": _cost_table,
     "approvals": _approvals,
+    "fix_diff": _fix_diff,
 }
 
 
@@ -60,6 +68,8 @@ def build_prompt(run, agent: Agent, ctx: dict, failure: str | None = None, insta
     boundaries = [f"- Branch: {run.branch}"]
     if ctx.get("change_id"):
         boundaries.append(f"- Change id: {ctx['change_id']}")
+    if ctx.get("issue_number"):
+        boundaries.append(f"- Issue number: {ctx['issue_number']}")
     boundaries.append(
         f"- You may write only to: {', '.join(writable)}" if writable
         else "- You are read-only: do not create or modify any file."

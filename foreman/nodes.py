@@ -9,7 +9,7 @@ from foreman.pr import build_body
 from foreman.policy import check_changes
 from foreman.context import writable_for
 from foreman.runner import Run, SafeStop, Stage, run_stage
-from foreman.util import count_tests, glob_match, merge_dicts, section, sh, slug
+from foreman.util import count_failed, count_tests, count_total, glob_match, merge_dicts, section, sh, slug
 
 
 class State(TypedDict, total=False):
@@ -181,7 +181,7 @@ def approve_proposal(run: Run):
     return node
 
 
-def validate_feature_checks(run: Run, ctx: dict) -> tuple[list[str], str]:
+def validate_feature_checks(run: Run, ctx: dict, min_tests: int = 1) -> tuple[list[str], str]:
     """Deterministic validation: build, full tests, tasks ticked, OpenSpec, branch-wide policy."""
     failures, results = [], []
     with run.lock:
@@ -194,9 +194,9 @@ def validate_feature_checks(run: Run, ctx: dict) -> tuple[list[str], str]:
     if tests.code:
         results.append("tests: FAIL")
         failures.append(f"tests failed:\n{tail(tests.out)}")
-    elif n == 0:
-        results.append("tests: none ran")
-        failures.append("no tests ran")
+    elif n < min_tests:
+        results.append(f"tests: {n} passed (need {min_tests})")
+        failures.append(f"test count too low: {n} passed, need at least {min_tests} (tests must not be removed)")
     else:
         results.append(f"tests: {n} passed")
 
@@ -293,4 +293,92 @@ def await_merge(run: Run):
         run.github.comment(run.issue_id, f"PR #{pr} merged ({sha[:8]}).")
         passed(run, "await_merge", merge_sha=sha)
         return {"ctx": {"merge_sha": sha}}
+    return node
+
+
+# ---------- bugfix ----------
+
+RCA_SECTIONS = ["Summary", "Impact", "Timeline", "Root cause", "Why it was missed", "Fix", "Prevention"]
+
+
+def bugfix_intake(run: Run):
+    """Normal intake, plus a baseline of the current suite so a new failing test can be recognised."""
+    base = intake(run)
+
+    def node(state: State) -> dict:
+        out = base(state)
+        r = sh(run.target.commands["test"], cwd=run.repo.path)
+        out["ctx"]["baseline_passed"] = count_tests(r.out)
+        out["ctx"]["baseline_total"] = count_total(r.out)
+        if logs := section(run.github.get_issue(run.issue_id).body, "Logs"):
+            out["ctx"]["log_excerpt"] = logs
+        return out
+    return node
+
+
+def spec_deltas(run: Run, ctx: dict) -> str:
+    return "\n\n".join(p.read_text() for p in sorted((change_dir(run, ctx) / "specs").glob("*/spec.md")))
+
+
+def gate_triage(run: Run, ctx: dict, text: str) -> str | None:
+    ok, out = run.spec.validate(ctx["change_id"])
+    if not ok:
+        return f"openspec validate --strict failed:\n{out}"
+    if "## MODIFIED Requirements" not in spec_deltas(run, ctx):
+        return "triage must modify an existing requirement (## MODIFIED Requirements) and describe the correct behaviour in a scenario"
+    return None
+
+
+def after_triage(run: Run, ctx: dict, text: str) -> dict:
+    d = change_dir(run, ctx)
+    proposal, design = (d / "proposal.md").read_text(), (d / "design.md").read_text()
+    return {"triage": "\n\n".join([proposal, design, spec_deltas(run, ctx)]), "design": design,
+            "tasks": (d / "tasks.md").read_text(), "change_summary": proposal}
+
+
+def gate_reproduce(run: Run, ctx: dict, text: str) -> str | None:
+    r = sh(run.target.commands["test"], cwd=run.repo.path)
+    if r.code == 0:
+        return "No failing test, no fix: every test passes on the current code. Write a test that fails because of the bug."
+    if count_total(r.out) <= ctx["baseline_total"]:
+        return "No new test was added: the suite has no more tests than before the change."
+    if count_failed(r.out) < 1:
+        return f"The suite errored without a failing test (build or collection error?):\n{tail(r.out)}"
+    if count_tests(r.out) < ctx["baseline_passed"]:
+        return f"Existing tests broke: {count_tests(r.out)} pass, {ctx['baseline_passed']} passed before."
+    return None
+
+
+def after_reproduce(run: Run, ctx: dict, text: str) -> dict:
+    tick_tasks(run, ctx, text)
+    r = sh(run.target.commands["test"], cwd=run.repo.path)
+    tests_glob = run.target.paths["tests"]
+    written = [f"### {path}\n{body}" for path, body in run.repo.snapshot().items()
+               if body is not None and glob_match(path, tests_glob)]
+    return {"failing_test": "\n\n".join(written), "failure_output": tail(r.out, 40)}
+
+
+def gate_rca(run: Run, ctx: dict, text: str) -> str | None:
+    path = run.repo.path / f"docs/rca/{ctx['issue_number']}.md"
+    if not path.exists():
+        return f"docs/rca/{ctx['issue_number']}.md was not written"
+    missing = [h for h in RCA_SECTIONS if not section(path.read_text(), h)]
+    return f"the RCA is missing sections: {', '.join(missing)}" if missing else None
+
+
+def after_rca(run: Run, ctx: dict, text: str) -> dict:
+    return {"rca_path": f"docs/rca/{ctx['issue_number']}.md"}
+
+
+TRIAGE = Stage("triage", "triager", produces="triage_summary", gate=gate_triage, after=after_triage)
+REPRODUCE = Stage("reproduce", "reproducer", produces="reproduced", gate=gate_reproduce, after=after_reproduce)
+FIX = Stage("fix", "fixer", produces="fixed", gate=gate_build, after=tick_tasks)
+RCA = Stage("rca", "rca_writer", produces="rca_summary", gate=gate_rca, after=after_rca)
+
+
+def validate_bugfix(run: Run):
+    def node(state: State) -> dict:
+        ctx = state["ctx"]
+        failures, results = validate_feature_checks(run, ctx, min_tests=ctx["baseline_passed"] + 1)
+        return finish_validation(run, ctx, failures, results)
     return node

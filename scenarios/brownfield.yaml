@@ -1,0 +1,15 @@
+name: brownfield
+workflow: bugfix
+input: scenarios/inputs/bug-click-counts.md
+target: url-shortener
+start_ref: v1-regressed
+approvals: scripted
+script:
+  proposal: [approve]
+budget_usd: 10.0
+faults: []
+expect:
+  status: completed
+  pr_state: merged
+  audit: [stage_passed, approval]
+  pr_body_contains: ["Closes #", "Root cause analysis", "Run total"]

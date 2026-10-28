@@ -122,3 +122,12 @@ def test_safe_stop_carries_rollback_flag_and_stage():
     assert (s.reason, s.rollback, s.stage) == ("boom", True, "validate")
     with pytest.raises(SafeStop):
         raise s
+
+
+def test_validate_enforces_a_minimum_test_count(make_run, repo):
+    run = make_run(AGENTS)
+    make_valid_change(repo)
+    repo.commit("work")
+    ctx = {"change_id": "c-1", "base_commit": repo.git("rev-parse", "HEAD~1").strip()}
+    failures, results = validate_feature_checks(run, ctx, min_tests=3)
+    assert any("test count" in f for f in failures) and "tests: 1 passed (need 3)" in results
