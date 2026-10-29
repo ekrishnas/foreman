@@ -117,3 +117,18 @@ def test_a_git_identity_is_required_because_commits_are_authored_as_the_develope
     fresh = GitRepo(repo.path)  # developer is read once per GitRepo object
     with pytest.raises(RepoError, match="user.name"):
         choose(fresh, Asked())
+
+
+def test_answers_given_up_front_are_used_without_asking(tmp_path, git_config):
+    human = Asked()
+    repo = clone(tmp_path, git_config, branches=("main", "develop"))
+    assert choose(repo, human, base="develop", prefix="feature") == Branching("develop", "feature/")
+    assert human.questions == []
+
+
+def test_answers_given_up_front_are_checked_like_typed_ones(tmp_path, git_config):
+    repo = clone(tmp_path, git_config)
+    with pytest.raises(RepoError, match="'nope' is not a branch on origin"):
+        choose(repo, Asked(), base="nope")
+    with pytest.raises(RepoError, match="prefix"):
+        choose(repo, Asked(), prefix="my branches")

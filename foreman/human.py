@@ -35,13 +35,20 @@ class TerminalHuman:
         self.ask = ask
         self.show = show
 
+    def _read(self, prompt: str) -> str:
+        try:
+            return self.ask(prompt).strip()
+        except EOFError:
+            raise RuntimeError("Foreman needs an answer but there is no terminal input: run it in a terminal, "
+                               "or give the answer on the command line (for branches: --base and --prefix)") from None
+
     def approve(self, kind: str, summary: str) -> Decision:
         self.show(f"\n=== Approval needed: {kind} ===\n{summary}\n")
-        reply = self.ask("Approve? [y = approve, anything else rejects and is kept as the note]: ").strip()
+        reply = self._read("Approve? [y = approve, anything else rejects and is kept as the note]: ")
         if reply.lower() in ("y", "yes"):
             return Decision(True, "", "terminal")
         return Decision(False, reply, "terminal")
 
     def answer(self, question: str) -> str | None:
         self.show(f"\nQuestion: {question}")
-        return self.ask("Answer (blank = proceed on an assumption): ").strip() or None
+        return self._read("Answer (blank = proceed on an assumption): ") or None

@@ -86,7 +86,7 @@ def branch_point(scenario: Scenario, mode: str, branching: Branching) -> str:
 
 def make_run(scenario: Scenario, mode: str, runs_dir: Path, run_id: str | None = None, store=None,
              recording: Path | None = None, issue: int | None = None, record: bool = False,
-             branching: Branching | None = None) -> Run:
+             branching: Branching | None = None, base: str | None = None, prefix: str | None = None) -> Run:
     if mode not in MODES:
         raise ValueError(f"mode must be one of {MODES}")
     run_id = run_id or new_run_id()
@@ -102,7 +102,7 @@ def make_run(scenario: Scenario, mode: str, runs_dir: Path, run_id: str | None =
         target = replace(target, repo=repo.path)
     elif mode == "live":
         repo = prepare_live_target(target)
-        branching = branching or choose(repo, human)  # fails fast, before an issue is filed or any model is paid for
+        branching = branching or choose(repo, human, base, prefix)  # fails fast, before an issue is filed or any model is paid for
     else:
         repo = GitRepo(target.repo)
     branching = branching or Branching()
@@ -160,8 +160,9 @@ class Session:
 
 def open_session(scenario: Scenario, mode: str, runs_dir: Path, checkpointer=None, run_id: str | None = None,
                  store=None, recording: Path | None = None, record: bool = False,
-                 branching: Branching | None = None) -> Session:
-    run = make_run(scenario, mode, runs_dir, run_id, store, recording, record=record, branching=branching)
+                 branching: Branching | None = None, base: str | None = None, prefix: str | None = None) -> Session:
+    run = make_run(scenario, mode, runs_dir, run_id, store, recording, record=record, branching=branching,
+                   base=base, prefix=prefix)
     run.repo.start_run(run.branch, branch_point(scenario, mode, run.branching))
     run.dir.mkdir(parents=True, exist_ok=True)
     (run.dir / "run.json").write_text(json.dumps({

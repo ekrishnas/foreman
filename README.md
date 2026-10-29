@@ -71,7 +71,7 @@ Foreman never commits or pushes to your base branch. Before a live run files an 
 1. Which branch to start from and open the pull request against (it lists the base branches on origin and proposes origin's default).
 2. How to name the run's branch. If origin's branches already follow a convention (say `feature/...`), it proposes that; otherwise `foreman/<run id>`.
 
-Press enter to accept the proposal. The answers are saved in `runs/<id>/run.json`, so `foreman resume` does not ask again. The run branch starts from `origin/<base>`, never from your local copy, and Foreman refuses to run when the local base has commits that are not on origin (they would be silently left out). If origin has no base branch yet it stops with the command to fix it (`git push -u origin main`).
+Press enter to accept the proposal, or pass them up front with `--base` and `--prefix` (needed when Foreman runs somewhere with no terminal input, where it stops with an error instead of guessing). The answers are saved in `runs/<id>/run.json`, so `foreman resume` does not ask again. The run branch starts from `origin/<base>`, never from your local copy, and Foreman refuses to run when the local base has commits that are not on origin (they would be silently left out). If origin has no base branch yet it stops with the command to fix it (`git push -u origin main`).
 
 Commits are **authored by you** (your git identity) and carry `Co-Authored-By: Foreman <foreman@localhost>`. Foreman authors a commit itself only when git has no identity at all, as in fake mode on a bare machine; live mode refuses to start without one.
 

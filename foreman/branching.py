@@ -21,10 +21,11 @@ def _convention(heads: list[str]) -> str | None:
     return counts.most_common(1)[0][0] if counts else None
 
 
-def choose(repo: GitRepo, human) -> Branching:
+def choose(repo: GitRepo, human, base: str | None = None, prefix: str | None = None) -> Branching:
     """Check that origin has a base branch, then let the developer confirm the base and the branch naming.
 
     Foreman never commits or pushes to the base: a run starts from origin/<base> and ends in a pull request.
+    `base` and `prefix` are answers given up front (command-line flags); they are checked like typed ones.
     """
     if not repo.developer:
         raise RepoError("git user.name and user.email are not set. Foreman commits as you, with itself as co-author: "
@@ -42,7 +43,7 @@ def choose(repo: GitRepo, human) -> Branching:
                         "Push your base branch first: git push -u origin main")
     default = head if head in bases else bases[0]
 
-    base = (human.answer(
+    base = (base or human.answer(
         f"Which branch should this run start from and open its pull request against? "
         f"Base branches on origin: {', '.join(sorted(bases))}. Press enter for '{default}'.") or default).strip()
     if base not in heads:
@@ -61,7 +62,7 @@ def choose(repo: GitRepo, human) -> Branching:
     else:
         question = ("No existing branch naming found on origin. Press enter to name this run's branch "
                     "'foreman/<run id>', or type a prefix such as 'feature/'.")
-    prefix = (human.answer(question) or found or "foreman/").strip()
+    prefix = (prefix or human.answer(question) or found or "foreman/").strip()
     if not prefix.endswith("/"):
         prefix += "/"
     if not PREFIX.fullmatch(prefix):

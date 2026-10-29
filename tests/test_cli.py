@@ -185,3 +185,8 @@ def test_handoff_refuses_an_analysis_with_no_issues(tmp_path):
     text = ANALYSIS_DOC.format(assumptions="- none").split("## Proposed issues")[0]
     with pytest.raises(CliError, match="Proposed issues"):
         handoff_from_file(github, ScriptedHuman(), analysis_file(tmp_path, text), spike)
+
+
+def test_base_and_prefix_flags_are_only_for_live_runs(tmp_path, capsys):
+    code, out = cli(tmp_path, capsys, "run", str(SCENARIOS / "greenfield.yaml"), "--mode", "fake", "--base", "main")
+    assert code == 1 and "choose the branches of a live run" in out

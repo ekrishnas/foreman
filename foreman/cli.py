@@ -103,6 +103,8 @@ def cmd_run(args) -> int:
         raise CliError(f"live runs need a durable store: {NEEDS_DB}")
     if args.mode == "replay" and not args.recording:
         raise CliError("replay mode needs --recording <dir> (a runs/<id>/recorded directory)")
+    if (args.base or args.prefix) and args.mode != "live":
+        raise CliError("--base and --prefix choose the branches of a live run; fake and replay modes use a throwaway repo")
     if args.issue and args.mode == "fake":
         raise CliError("fake mode files its own issue from the scenario input; --issue needs live mode")
     if args.scenario:
@@ -116,7 +118,8 @@ def cmd_run(args) -> int:
     runs_dir = Path(args.runs_dir)
     session = open_session(scenario, args.mode, runs_dir, checkpointer=make_checkpointer(db),
                            store=open_store(runs_dir, db), record=args.record,
-                           recording=Path(args.recording) if args.recording else None)
+                           recording=Path(args.recording) if args.recording else None,
+                           base=args.base, prefix=args.prefix)
     return report(session, session.start())
 
 
@@ -202,6 +205,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--budget", type=float, default=10.0, help="USD cap for --issue without a scenario")
     p.add_argument("--recording", help="recorded worker outputs to replay (runs/<id>/recorded)")
     p.add_argument("--record", action="store_true", help="record worker outputs (always on in live mode)")
+    p.add_argument("--base", help="live: the branch to start from and open the PR against (else asked)")
+    p.add_argument("--prefix", help="live: the run branch prefix, e.g. feature/ (else asked)")
     p.set_defaults(func=cmd_run)
 
     p = sub.add_parser("resume", parents=[common], help="continue a paused or safe-stopped run")

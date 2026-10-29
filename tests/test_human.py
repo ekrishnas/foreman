@@ -1,3 +1,5 @@
+import pytest
+
 from foreman.human import Decision, ScriptedHuman, TerminalHuman
 
 
@@ -39,3 +41,14 @@ def test_terminal_shows_the_summary():
     shown = []
     TerminalHuman(ask=lambda p: "y", show=shown.append).approve("proposal", "THE SUMMARY")
     assert any("THE SUMMARY" in s for s in shown)
+
+
+def no_terminal(prompt):
+    raise EOFError
+
+
+def test_terminal_without_input_says_how_to_answer_instead_of_crashing():
+    h = TerminalHuman(ask=no_terminal, show=lambda text: None)
+    for call in (lambda: h.answer("which db?"), lambda: h.approve("proposal", "summary")):
+        with pytest.raises(RuntimeError, match="no terminal input.*command line"):
+            call()
