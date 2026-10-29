@@ -1,6 +1,6 @@
 import pytest
 
-from foreman.gitops import Change, RepoError
+from foreman.adapters.gitops import Change, RepoError
 
 
 def write(repo, rel, text):

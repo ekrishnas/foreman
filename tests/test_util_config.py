@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from foreman.config import allowed_tools, load_agents, load_scenario, load_target
-from foreman.util import glob_match, merge_dicts, section, sh, sha, slug
+from foreman.core.config import WORKFLOWS, allowed_tools, load_agents, load_target
+from foreman.core.util import glob_match, merge_dicts, section, sh, sha, slug
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -74,7 +74,7 @@ def test_sh_puts_current_python_first_on_path(tmp_path):
     ("no tests ran", 0),
 ])
 def test_count_tests_reads_pytest_and_dotnet_summaries(out, expected):
-    from foreman.util import count_tests
+    from foreman.core.util import count_tests
     assert count_tests(out) == expected
 
 
@@ -86,7 +86,7 @@ def test_count_tests_reads_pytest_and_dotnet_summaries(out, expected):
     ("garbage", 0, 0),
 ])
 def test_count_failed_and_total(out, failed, total):
-    from foreman.util import count_failed, count_total
+    from foreman.core.util import count_failed, count_total
     assert (count_failed(out), count_total(out)) == (failed, total)
 
 
@@ -108,9 +108,21 @@ def test_sh_missing_executable_gives_127(tmp_path):
     assert sh(["/definitely/not/here"], cwd=tmp_path).code == 127
 
 
-def test_load_agents_has_the_fourteen_design_agents():
+def test_openspec_helpers_expand_to_scoped_commands_and_never_to_archive_or_apply():
+    agents, _ = load_agents(ROOT / "config/agents.yaml")
+    target = load_target(ROOT / "examples/target.yaml")
+    architect = allowed_tools(agents["architect"], target)
+    assert "Bash(openspec instructions:*)" in architect and "Bash(openspec new change:*)" in architect
+    assert "openspec_author" not in architect
+    assert "Bash(openspec new change:*)" not in allowed_tools(agents["reviewer"], target)
+    for name, agent in agents.items():
+        joined = " ".join(allowed_tools(agent, target))
+        assert "openspec archive" not in joined and "openspec apply" not in joined, name
+
+
+def test_load_agents_has_all_twenty_agents():
     agents, models = load_agents(ROOT / "config/agents.yaml")
-    assert len(agents) == 14
+    assert len(agents) == 20
     assert agents["implementer"].tier == "mid"
     assert agents["requirements_analyst"].writable == []
     assert models["strong"] == "claude-opus-5-5"
@@ -128,33 +140,40 @@ def test_test_writer_never_sees_the_implementation():
     assert names == ["contract", "acceptance_criteria", "spec_scenarios"]
 
 
-def test_load_target_matches_design_profile():
-    t = load_target(ROOT / "targets/url-shortener.yaml")
-    assert t.name == "url-shortener"
-    assert t.commands["test"] == "dotnet test"
-    assert t.slo == {"error_rate_max": 0.01, "p95_ms_max": 200}
-    assert t.dependency_manifests == ["**/*.csproj"]
-    assert t.repo == (ROOT / "../url-shortener").resolve()
+def test_the_example_profile_loads_and_the_repo_is_where_the_profile_lives(tmp_path):
+    t = load_target(ROOT / "examples/target.yaml")
+    assert t.name == "my-app" and t.commands["test"] == "dotnet test"
+    assert t.dependency_manifests == ["**/*.csproj"] and t.protected == ["**/Migrations/**"]
+    assert t.repo == ROOT  # examples/target.yaml sits two levels below ROOT/examples/.. (a real one: <repo>/.foreman/)
+
+
+def test_a_profile_inside_dot_foreman_belongs_to_the_repo_around_it(tmp_path):
+    (tmp_path / ".foreman").mkdir()
+    (tmp_path / ".foreman/target.yaml").write_text("paths: {src: 'a/**', tests: 't/**', docs: 'd/**'}\ncommands: {build: b, test: t}\n")
+    t = load_target(tmp_path / ".foreman/target.yaml")
+    assert t.repo == tmp_path.resolve() and t.name == tmp_path.name  # the name defaults to the folder name
+    assert t.dependency_manifests == [] and t.protected == []
+
+
+def test_a_profile_missing_its_commands_is_an_error(tmp_path):
+    (tmp_path / "t.yaml").write_text("paths: {src: 'a/**'}\n")
+    with pytest.raises(KeyError):
+        load_target(tmp_path / "t.yaml")
 
 
 def test_allowed_tools_expands_command_tools_from_target():
     agents, _ = load_agents(ROOT / "config/agents.yaml")
-    t = load_target(ROOT / "targets/url-shortener.yaml")
+    t = load_target(ROOT / "examples/target.yaml")
     tools = allowed_tools(agents["fixer"], t)
     assert "Bash(dotnet build:*)" in tools and "Bash(dotnet test:*)" in tools
     assert "Edit" in tools and "build_cmd" not in tools
 
 
-def test_load_scenario_applies_defaults(tmp_path):
-    p = tmp_path / "s.yaml"
-    p.write_text("name: x\nworkflow: feature\ninput: a.md\ntarget: fake\n")
-    s = load_scenario(p)
-    assert s.approvals == "scripted" and s.faults == [] and s.budget_usd == 10.0 and s.tag == ""
-    assert s.start_ref == "main" and s.input == "a.md"
+def test_every_workflow_the_router_can_choose_has_a_graph_and_the_graphs_are_all_choosable():
+    from foreman.workflows import GRAPHS
+    assert set(GRAPHS) == set(WORKFLOWS)
 
 
-def test_load_scenario_rejects_unknown_workflow(tmp_path):
-    p = tmp_path / "s.yaml"
-    p.write_text("name: x\nworkflow: nope\ninput: 1\ntarget: fake\n")
-    with pytest.raises(ValueError, match="workflow"):
-        load_scenario(p)
+def test_every_agent_has_a_prompt_file_and_every_prompt_file_an_agent():
+    agents, _ = load_agents(ROOT / "config/agents.yaml")
+    assert {p.stem for p in (ROOT / "prompts").glob("*.md")} == set(agents)

@@ -1,0 +1,14 @@
+name: budget-stop
+input: examples/new-implementation-url-shortener.md
+budget_usd: 0.1
+faults:
+- stage: requirements
+  calls:
+  - 0
+  kind: cost
+  usd: 1.0
+expect:
+  status: safe_stopped
+  audit:
+  - safe_stop
+request: 'let''s work on #1'

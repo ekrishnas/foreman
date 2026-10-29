@@ -1,0 +1,14 @@
+name: retry-then-success
+input: examples/new-implementation-url-shortener.md
+faults:
+- stage: implement
+  calls:
+  - 0
+  kind: break_tests
+expect:
+  status: completed
+  pr_state: merged
+  audit:
+  - attempt_failed
+  - retry
+request: 'let''s work on #1'

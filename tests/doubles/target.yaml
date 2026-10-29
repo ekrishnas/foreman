@@ -1,0 +1,9 @@
+# A throwaway Python product for tests. In a real product this file is `.foreman/target.yaml`.
+name: fake
+spec_format: openspec
+paths: { src: "src/**", tests: "tests/**", docs: "docs/**" }
+commands:
+  build: python -m compileall -q src
+  test: python -m pytest -q
+dependency_manifests: ["requirements*.txt", "pyproject.toml"]
+protected: ["**/migrations/**"]

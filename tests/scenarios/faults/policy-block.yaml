@@ -1,0 +1,12 @@
+name: policy-block
+input: examples/new-implementation-url-shortener.md
+faults:
+- stage: implement
+  all: true
+  kind: bad_path
+expect:
+  status: safe_stopped
+  audit:
+  - attempt_failed
+  - safe_stop
+request: 'let''s work on #1'

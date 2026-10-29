@@ -1,16 +1,24 @@
+import json
 import re
 
-import pytest
-
-from foreman.cli import create_issue_from_file, main, wait_for_merge
-from foreman.github import FakeGitHub
+from foreman.cli import main
+from foreman.state.store import AuditEvent, Store
 from tests.conftest import ROOT
+from tests.doubles.run import fake_factory
+from tests.doubles.scenario import load_scenario
 
-SCENARIOS = ROOT / "scenarios"
+SCENARIO = ROOT / "tests/scenarios/new_implementation.yaml"
+BUDGET_STOP = ROOT / "tests/scenarios/faults/budget-stop.yaml"
 
 
-def cli(tmp_path, capsys, *args):
-    code = main([*args, "--runs-dir", str(tmp_path)] if args[0] != "issue" else list(args))
+def run_cli(tmp_path, capsys, scenario, *args):
+    code = main(["run", "1", "--request", scenario.request, "--budget", str(scenario.budget_usd),
+                 "--runs-dir", str(tmp_path), *args], factory=fake_factory(scenario))
+    return code, capsys.readouterr().out
+
+
+def cli(tmp_path, capsys, *args, scenario=None):
+    code = main([*args, "--runs-dir", str(tmp_path)], factory=fake_factory(scenario or load_scenario(SCENARIO)))
     return code, capsys.readouterr().out
 
 
@@ -18,124 +26,108 @@ def run_id_of(out):
     return re.search(r"^run: (\S+)", out, re.M).group(1)
 
 
-def test_run_in_fake_mode_reports_status_pr_and_cost(tmp_path, capsys):
-    code, out = cli(tmp_path, capsys, "run", str(SCENARIOS / "greenfield.yaml"), "--mode", "fake")
+def test_run_prints_the_run_id_first_then_type_status_pr_and_cost(tmp_path, capsys):
+    code, out = run_cli(tmp_path, capsys, load_scenario(SCENARIO))
     assert code == 0, out
-    assert "status: completed" in out and "PR: #2" in out and "cost: $0.52" in out
-    assert "expect: ok" in out
+    assert out.splitlines()[0].startswith("run: ")
+    assert "type: new_implementation" in out and "status: completed" in out
+    assert "PR: #2" in out and "cost: $0.62" in out  # classifier, six agents, and the reviewer
 
 
-@pytest.mark.parametrize("name", ["greenfield", "brownfield", "ambiguous"])
-def test_each_shipped_scenario_passes_its_own_expectations_in_fake_mode(name, tmp_path, capsys):
-    code, out = cli(tmp_path, capsys, "run", str(SCENARIOS / f"{name}.yaml"), "--mode", "fake")
-    assert code == 0, out
-
-
-def test_unmet_expectation_exits_one_and_says_what_failed(tmp_path, capsys):
-    scenario = tmp_path / "s.yaml"
-    scenario.write_text((SCENARIOS / "greenfield.yaml").read_text().replace("status: completed", "status: safe_stopped"))
-    code, out = cli(tmp_path, capsys, "run", str(scenario), "--mode", "fake")
-    assert code == 1 and "expected 'safe_stopped'" in out
-
-
-def test_safe_stop_exits_two_with_the_reason(tmp_path, capsys):
-    code, out = cli(tmp_path, capsys, "run", str(SCENARIOS / "faults/budget-stop.yaml"), "--mode", "fake")
+def test_safe_stop_exits_two_with_the_reason_and_how_to_resume(tmp_path, capsys):
+    code, out = run_cli(tmp_path, capsys, load_scenario(BUDGET_STOP))
     assert code == 2 and "status: safe_stopped" in out and "budget" in out
+    assert f"foreman resume {run_id_of(out)}" in out
 
 
-def test_observe_failure_exits_three(tmp_path, capsys):
-    scenario = tmp_path / "s.yaml"
-    scenario.write_text((SCENARIOS / "greenfield.yaml").read_text().replace(
-        "faults: []", "faults:\n  - {stage: observe, kind: slo_breach}").replace("status: completed", "status: observe_failed"))
-    code, out = cli(tmp_path, capsys, "run", str(scenario), "--mode", "fake")
-    assert code == 3 and "observe_failed" in out and "revert PR" in out
+def test_resume_continues_a_safe_stopped_run_from_its_checkpoint(tmp_path, capsys):
+    scenario = load_scenario(BUDGET_STOP)
+    _, out = run_cli(tmp_path, capsys, scenario)
+    run_id = run_id_of(out)
+    meta_path = tmp_path / run_id / "run.json"
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    meta["config"]["budget_usd"] = 10.0  # the developer raised the budget
+    meta_path.write_text(json.dumps(meta), encoding="utf-8")
+    code = main(["resume", run_id, "--runs-dir", str(tmp_path)], factory=fake_factory(scenario))
+    out = capsys.readouterr().out
+    assert code == 0 and "status: completed" in out and "type: new_implementation" in out
 
 
-def test_metrics_command_reads_the_exported_audit_and_cost_files(tmp_path, capsys):
-    _, out = cli(tmp_path, capsys, "run", str(SCENARIOS / "faults/retry-then-success.yaml"), "--mode", "fake")
-    code, out = cli(tmp_path, capsys, "metrics", run_id_of(out))
+def test_a_real_run_checks_its_tools_first(tmp_path, capsys, monkeypatch):
+    monkeypatch.setattr("shutil.which", lambda tool: None)
+    code = main(["run", "1", "--runs-dir", str(tmp_path)])  # default factory: the real one
+    assert code == 1 and "missing on PATH" in capsys.readouterr().out
+
+
+# ---- pending / respond: how Claude Code and the running orchestrator talk
+
+def test_pending_lists_open_questions_with_the_command_that_answers_them(tmp_path, capsys):
+    store = Store(tmp_path / "foreman.db")
+    store.ask("r1", "proposal", "Change c-1: add the shortener")
+    store.ask("r1", "question", "Which database?")
+    code, out = cli(tmp_path, capsys, "pending")
     assert code == 0
-    for needle in ("stage_success", "retry_rate", "rollbacks", "mttr_s", "latency_s", "human_wait_s", "cost_usd"):
-        assert needle in out
+    assert "request 1 (run r1, proposal)" in out and "foreman respond 1 --approve | --reject" in out
+    assert "Change c-1: add the shortener" in out
+    assert "foreman respond 2 --answer TEXT" in out
 
 
-def test_cost_for_an_issue_sums_every_run_against_it(tmp_path, capsys):
-    cli(tmp_path, capsys, "run", str(SCENARIOS / "greenfield.yaml"), "--mode", "fake")
-    cli(tmp_path, capsys, "run", str(SCENARIOS / "greenfield.yaml"), "--mode", "fake")
-    code, out = cli(tmp_path, capsys, "cost", "--issue", "1")
-    assert code == 0 and "2 runs" in out and "total: $1.04" in out
+def test_pending_says_so_when_nothing_is_waiting(tmp_path, capsys):
+    _, out = cli(tmp_path, capsys, "pending")
+    assert "no pending requests" in out
 
 
-def test_resume_without_a_durable_store_explains_how_to_get_one(tmp_path, capsys, monkeypatch):
-    monkeypatch.delenv("FOREMAN_DB_URL", raising=False)
-    code, out = cli(tmp_path, capsys, "resume", "some-run")
-    assert code == 1 and "FOREMAN_DB_URL" in out
+def test_pending_wait_returns_early_when_the_run_has_finished(tmp_path, capsys):
+    Store(tmp_path / "foreman.db").audit(AuditEvent("r1", "bugfix", "run", "run_completed"))
+    _, out = cli(tmp_path, capsys, "pending", "--run", "r1", "--wait", "30")
+    assert "run r1 has finished" in out
 
 
-def test_live_mode_requires_a_durable_store(tmp_path, capsys, monkeypatch):
-    monkeypatch.delenv("FOREMAN_DB_URL", raising=False)
-    code, out = cli(tmp_path, capsys, "run", str(SCENARIOS / "greenfield.yaml"), "--mode", "live")
-    assert code == 1 and "FOREMAN_DB_URL" in out
+def test_respond_approve_and_reject_with_a_note(tmp_path, capsys):
+    store = Store(tmp_path / "foreman.db")
+    a, b = store.ask("r1", "proposal", "p"), store.ask("r1", "high_impact", "h")
+    assert cli(tmp_path, capsys, "respond", str(a), "--approve", "--who", "dev")[0] == 0
+    assert cli(tmp_path, capsys, "respond", str(b), "--reject", "--note", "no new dependencies")[0] == 0
+    assert store.get_request(a)["approved"] == 1 and store.get_request(a)["who"] == "dev"
+    assert store.get_request(b)["approved"] == 0 and store.get_request(b)["note"] == "no new dependencies"
 
 
-def test_fake_mode_cannot_run_an_existing_issue_number(tmp_path, capsys):
-    code, out = cli(tmp_path, capsys, "run", str(SCENARIOS / "greenfield.yaml"), "--mode", "fake", "--issue", "5")
-    assert code == 1 and "fake mode" in out
+def test_respond_to_a_question_needs_an_answer_and_a_blank_one_is_allowed(tmp_path, capsys):
+    store = Store(tmp_path / "foreman.db")
+    q = store.ask("r1", "question", "Which database?")
+    code, out = cli(tmp_path, capsys, "respond", str(q), "--approve")
+    assert code == 1 and "--answer" in out
+    assert cli(tmp_path, capsys, "respond", str(q), "--answer", "")[0] == 0
+    assert store.get_request(q)["status"] == "answered"
 
 
-def test_record_then_replay_reproduces_the_run_without_a_fake_worker(tmp_path, capsys):
-    scenario = tmp_path / "s.yaml"
-    scenario.write_text((SCENARIOS / "greenfield.yaml").read_text().replace("target: url-shortener", "target: fake"))
-    _, out = cli(tmp_path, capsys, "run", str(scenario), "--mode", "fake", "--record")
-    recorded = tmp_path / run_id_of(out) / "recorded"
-    assert list(recorded.glob("*.json"))
-    code, out = cli(tmp_path, capsys, "run", str(scenario), "--mode", "replay", "--recording", str(recorded))
-    assert code == 0 and "status: completed" in out and "cost: $0.52" in out
+def test_respond_needs_exactly_one_of_approve_or_reject(tmp_path, capsys):
+    store = Store(tmp_path / "foreman.db")
+    p = store.ask("r1", "proposal", "p")
+    assert "exactly one" in cli(tmp_path, capsys, "respond", str(p))[1]
+    assert "exactly one" in cli(tmp_path, capsys, "respond", str(p), "--approve", "--reject")[1]
 
 
-def test_replay_requires_a_recording(tmp_path, capsys):
-    code, out = cli(tmp_path, capsys, "run", str(SCENARIOS / "greenfield.yaml"), "--mode", "replay")
-    assert code == 1 and "--recording" in out
-
-
-def test_issue_create_files_a_labelled_issue_from_a_markdown_file(tmp_path, repo):
-    gh = FakeGitHub(tmp_path / "gh", repo)
-    n = create_issue_from_file(gh, SCENARIOS / "inputs/spike-analytics.md", "spike")
-    issue = gh.get_issue(n)
-    assert issue.title == "Link analytics: what should we build?" and issue.labels == ["foreman:spike"]
-    assert "## Questions" in issue.body
-
-
-def test_issue_create_rejects_an_unknown_type(tmp_path, repo):
-    with pytest.raises(ValueError, match="type"):
-        create_issue_from_file(FakeGitHub(tmp_path / "gh", repo), SCENARIOS / "inputs/spike-analytics.md", "epic")
-
-
-def test_wait_for_merge_polls_until_the_pr_leaves_the_open_state(tmp_path, repo):
-    gh = FakeGitHub(tmp_path / "gh", repo)
-    repo.start_run("foreman/r1", "main")
-    pr = gh.open_pr("foreman/r1", "T", "b", [], closes=None)
-    sleeps = []
-
-    def fake_sleep(seconds):
-        sleeps.append(seconds)
-        if len(sleeps) == 3:
-            gh.merge(pr)
-
-    assert wait_for_merge(gh, pr, interval=7, timeout=100, sleep=fake_sleep) == "merged"
-    assert sleeps == [7, 7, 7]
-
-
-def test_wait_for_merge_gives_up_after_the_timeout(tmp_path, repo):
-    gh = FakeGitHub(tmp_path / "gh", repo)
-    repo.start_run("foreman/r1", "main")
-    pr = gh.open_pr("foreman/r1", "T", "b", [], closes=None)
-    assert wait_for_merge(gh, pr, interval=10, timeout=25, sleep=lambda s: None) == "open"
+def test_respond_to_an_unknown_or_already_answered_request_is_an_error(tmp_path, capsys):
+    store = Store(tmp_path / "foreman.db")
+    p = store.ask("r1", "proposal", "p")
+    assert cli(tmp_path, capsys, "respond", "99", "--approve")[0] == 1
+    cli(tmp_path, capsys, "respond", str(p), "--approve")
+    code, out = cli(tmp_path, capsys, "respond", str(p), "--reject")
+    assert code == 1 and "already answered" in out
 
 
 def test_every_agent_has_a_prompt_that_states_its_role():
-    from foreman.config import load_agents
+    from foreman.core.config import load_agents
     agents, _ = load_agents(ROOT / "config/agents.yaml")
     for name in agents:
-        text = (ROOT / "prompts" / f"{name}.md").read_text()
+        text = (ROOT / "prompts" / f"{name}.md").read_text(encoding="utf-8")
         assert text.startswith("# Role:") and "## Inputs" in text, name
+
+
+def test_the_example_issues_exist_and_the_target_profile_matches_the_real_repo():
+    from foreman.core.config import load_target
+    assert (ROOT / "examples/new-implementation-url-shortener.md").is_file()
+    assert (ROOT / "examples/bugfix-click-counts.md").is_file()
+    profile = load_target(ROOT / "examples/target.yaml", repo=ROOT / "my-app")
+    assert profile.name == "my-app" and profile.commands["test"] and profile.paths["src"]

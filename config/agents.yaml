@@ -9,15 +9,36 @@ models:
   strong: claude-opus-5-5
 
 agents:
+  # ---- router
+  classifier:
+    tier: mid
+    tools: [Read]
+    writable: []
+    context: [request, user_story, target_profile, repo_tree, existing_specs]
+
+  # ---- first run on a product that has no OpenSpec specs yet (existing_change, bugfix)
+  baseliner:
+    tier: mid
+    tools: [Read, Grep, Write, openspec_author]
+    writable: ["openspec/changes/baseline-{change}/**"]
+    context: [user_story, target_profile, repo_tree]
+
+  # ---- new_implementation and existing_change
+  impact_analyst:
+    tier: mid
+    tools: [Read, Grep]
+    writable: []
+    context: [user_story, target_profile, repo_tree, existing_specs]
+
   requirements_analyst:
     tier: strong
     tools: [Read]
     writable: []
-    context: [user_story, target_profile, "repo_tree?"]
+    context: [user_story, target_profile, "repo_tree?", "impact?"]
 
   architect:
     tier: strong
-    tools: [Read, Write]
+    tools: [Read, Write, openspec_author]
     writable: ["openspec/changes/{change}/**"]
     context: [requirements, "assumptions?", "clarifications?", "impacted_files?", existing_specs, "reviewer_notes?"]
 
@@ -39,9 +60,17 @@ agents:
     writable: ["{paths.docs}"]
     context: [design, contract]
 
+  # ---- review, before a change is archived (new_implementation, existing_change, bugfix)
+  reviewer:
+    tier: mid
+    tools: [Read, Grep, openspec_read]
+    writable: []
+    context: [change_summary, design, change_tasks, change_specs, validate_results, branch_diff]
+
+  # ---- bugfix
   triager:
     tier: strong
-    tools: [Read, Grep, Write]
+    tools: [Read, Grep, Write, openspec_author]
     writable: ["openspec/changes/{change}/**"]
     context: [user_story, "log_excerpt?", repo_tree, existing_specs, "reviewer_notes?"]
 
@@ -63,6 +92,20 @@ agents:
     writable: ["docs/rca/**"]
     context: [triage, failing_test, fix_diff, validate_results]
 
+  # ---- test_improvement and doc_improvement
+  test_improver:
+    tier: mid
+    tools: [Read, Grep, Edit, Write, test_cmd]
+    writable: ["{paths.tests}"]
+    context: [user_story, target_profile, repo_tree, "last_failure?"]
+
+  doc_improver:
+    tier: mid
+    tools: [Read, Grep, Edit, Write]
+    writable: ["{paths.docs}", "README.md"]
+    context: [user_story, target_profile, repo_tree, existing_specs, "last_failure?"]
+
+  # ---- spike
   framer:
     tier: strong
     tools: [Read]
@@ -81,14 +124,16 @@ agents:
     writable: ["docs/spikes/{run_id}/**"]
     context: [framing, explorer_notes]
 
+  # ---- observe
+  observer:
+    tier: mid
+    tools: [Read]
+    writable: []
+    context: [request, user_story, observability_notes, log_file, log_excerpt]
+
+  # ---- shared
   pr_summarizer:
     tier: small
     tools: [Read]
     writable: []
-    context: [diff_stat, change_summary, validate_results, approvals, cost_table]
-
-  observer:
-    tier: small
-    tools: [Read]
-    writable: []
-    context: [log_sample, metrics, slo]
+    context: [diff_stat, user_story, "change_summary?", validate_results, approvals, cost_table]

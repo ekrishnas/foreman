@@ -1,22 +1,22 @@
 import json
 
-from foreman.config import Scenario
-from foreman.engine import open_session
-from foreman.util import count_tests, sh
+from foreman.core.util import count_tests, sh
 from tests.conftest import ROOT
+from tests.doubles.run import fake_session
+from tests.doubles.scenario import Scenario
 
-INPUT = str(ROOT / "scenarios/inputs/bug-click-counts.md")
-STAGES = ["intake", "triage", "reproduce", "fix", "validate", "rca", "archive_spec", "pr_summary",
+INPUT = str(ROOT / "examples/bugfix-click-counts.md")
+STAGES = ["classify", "intake", "triage", "reproduce", "fix", "validate", "rca", "archive_spec", "pr_summary",
           "open_pr", "await_merge"]
 
 
 def scenario(**kw):
-    return Scenario(**{"name": "brownfield", "workflow": "bugfix", "input": INPUT, "target": "fake",
+    return Scenario(**{"name": "bugfix", "input": INPUT, "request": "fix #1",
                        "start_ref": "v1-regressed", **kw})
 
 
 def session_for(tmp_path, **kw):
-    return open_session(scenario(**kw), "fake", tmp_path / "runs", run_id="b1")
+    return fake_session(scenario(**kw), tmp_path / "runs", run_id="b1")
 
 
 def events(session, name=None, stage=None):
@@ -109,3 +109,35 @@ def test_baseline_suite_is_recorded_at_intake(tmp_path):
     s = session_for(tmp_path)
     s.start()
     assert s.ctx()["baseline_passed"] == 4 and s.ctx()["baseline_total"] == 4
+
+
+# ---- the triage gate before and after a product has specs
+
+ADDED = ("## ADDED Requirements\n### Requirement: Count clicks\nThe system SHALL count clicks.\n\n"
+         "#### Scenario: Resolve twice\n- **WHEN** x\n- **THEN** y\n")
+MODIFIED = ADDED.replace("ADDED", "MODIFIED")
+
+
+def triage_change(repo, spec_text):
+    base = repo.path / "openspec/changes/c-1"
+    for rel, text in {"proposal.md": "p", "design.md": "d", "tasks.md": "t", "specs/shortener/spec.md": spec_text}.items():
+        (base / rel).parent.mkdir(parents=True, exist_ok=True)
+        (base / rel).write_text(text, encoding="utf-8")
+
+
+def test_triage_on_a_product_with_no_specs_must_record_the_behaviour_as_added(make_run, repo):
+    from foreman.workflows.bugfix import gate_triage
+    run = make_run({})
+    triage_change(repo, ADDED)
+    assert gate_triage(run, {"change_id": "c-1"}, "") is None
+    triage_change(repo, MODIFIED)
+    assert "no specs yet" in gate_triage(run, {"change_id": "c-1"}, "")
+
+
+def test_triage_on_a_product_with_specs_must_modify_one_of_them(make_run, repo):
+    from foreman.workflows.bugfix import gate_triage
+    run = make_run({})
+    (repo.path / "openspec/specs/shortener").mkdir(parents=True)
+    (repo.path / "openspec/specs/shortener/spec.md").write_text(MODIFIED.replace("MODIFIED", "x").replace("## x Requirements\n", "## Requirements\n"), encoding="utf-8")
+    triage_change(repo, ADDED)
+    assert "must modify an existing requirement" in gate_triage(run, {"change_id": "c-1"}, "")

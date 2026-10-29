@@ -17,3 +17,14 @@ When finished, reply with a short summary, then one line per completed task from
 ```
 DONE: 1.1
 ```
+
+## Observability (required)
+Your last section must say how this code logs, so that someone can later check from the logs that it works:
+
+```
+## Observability
+- Log location: <file path, relative to the repository root, that the running code writes to>
+- Success: <one example log line that shows the feature working>
+- Errors: <the strings or patterns that show it failing>
+```
+Make the code actually write those lines. Add the log directory to `.gitignore` if it is not there.

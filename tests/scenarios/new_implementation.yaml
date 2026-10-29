@@ -1,0 +1,13 @@
+name: new_implementation
+input: examples/new-implementation-url-shortener.md
+request: "let's work on #1"
+start_ref: main
+script:
+  proposal: [approve]
+budget_usd: 10.0
+expect:
+  type: new_implementation
+  status: completed
+  pr_state: merged
+  audit: [classified, stage_passed, approval]
+  pr_body_contains: ["Closes #", "Run total", "Issue total", "Observability"]

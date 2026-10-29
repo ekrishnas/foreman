@@ -2,9 +2,10 @@ import sys
 
 import pytest
 
-from foreman.specs import SpecAdapter
+from foreman.adapters.specs import SpecAdapter
+from tests.doubles.run import OPENSPEC
 
-FAKE_CLI = [sys.executable, "-m", "foreman.fake_openspec"]
+FAKE_CLI = OPENSPEC
 
 SPEC = """## ADDED Requirements
 ### Requirement: Shorten URL
@@ -51,6 +52,43 @@ def test_requirement_without_scenario_fails(tmp_path):
 def test_unknown_change_fails(tmp_path):
     ok, out = SpecAdapter(FAKE_CLI, tmp_path).validate("nope")
     assert not ok and "nope" in out
+
+
+CURRENT = """# shortener Specification
+
+## Requirements
+### Requirement: Count clicks
+The system SHALL count one click each time a code is resolved.
+
+#### Scenario: Resolve twice
+- **WHEN** a code is resolved twice
+- **THEN** its click count is 2
+"""
+
+
+def modified(*scenarios):
+    body = "".join(f"\n#### Scenario: {name}\n- **WHEN** x\n- **THEN** y\n" for name in scenarios)
+    return f"## MODIFIED Requirements\n### Requirement: Count clicks\nThe system SHALL count clicks, never stale ones.\n{body}"
+
+
+def living_spec(root):
+    (root / "openspec/specs/shortener").mkdir(parents=True)
+    (root / "openspec/specs/shortener/spec.md").write_text(CURRENT)
+
+
+def test_a_modified_requirement_must_keep_every_scenario_the_current_spec_has(tmp_path):
+    """The real CLI (1.15.0) refuses a MODIFIED block that drops a scenario; the stand-in must too."""
+    living_spec(tmp_path)
+    make_change(tmp_path, spec=modified("Stats stay current"))
+    ok, out = SpecAdapter(FAKE_CLI, tmp_path).validate("c-1")
+    assert not ok and 'omits scenario(s) the current spec still has: "Resolve twice"' in out
+
+
+def test_a_modified_requirement_that_keeps_them_and_adds_one_passes(tmp_path):
+    living_spec(tmp_path)
+    make_change(tmp_path, spec=modified("Resolve twice", "Stats stay current"))
+    ok, out = SpecAdapter(FAKE_CLI, tmp_path).validate("c-1")
+    assert ok, out
 
 
 def test_archive_moves_change_and_updates_living_spec(tmp_path):

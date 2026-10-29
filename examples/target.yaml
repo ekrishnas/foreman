@@ -1,0 +1,14 @@
+# .foreman/target.yaml: how Foreman works on THIS product.
+# It lives in the product repo and is committed with it. The /foreman skill creates it on the first run
+# (it inspects the repo and asks you to confirm); you can also copy this file and edit it.
+name: my-app                          # the GitHub repo name if Foreman has to create one; defaults to the folder name
+spec_format: openspec
+paths:                                # where things live. Each agent may only write inside its own paths.
+  src: "src/**"
+  tests: "tests/**"
+  docs: "docs/**"
+commands:                             # the gates run these, and they are the only commands code-writing agents may use
+  build: dotnet build
+  test: dotnet test
+dependency_manifests: ["**/*.csproj"] # a change to these needs a human's approval
+protected: ["**/Migrations/**"]       # so does a change under these

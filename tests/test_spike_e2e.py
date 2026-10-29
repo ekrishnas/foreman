@@ -1,20 +1,20 @@
 import json
 
-from foreman.config import Scenario
-from foreman.engine import open_session
 from tests.conftest import ROOT
+from tests.doubles.run import fake_session
+from tests.doubles.scenario import Scenario
 
-INPUT = str(ROOT / "scenarios/inputs/spike-analytics.md")
+INPUT = str(ROOT / "tests/inputs/spike-analytics.md")
 ANALYSIS = "docs/spikes/s1/analysis.md"
 
 
 def scenario(**kw):
-    return Scenario(**{"name": "ambiguous", "workflow": "spike", "input": INPUT, "target": "fake",
+    return Scenario(**{"name": "spike", "input": INPUT, "request": "let's work on #1",
                        "script": {"answers": ["Total clicks and referrers", "Hourly is fine"]}, **kw})
 
 
 def session_for(tmp_path, **kw):
-    return open_session(scenario(**kw), "fake", tmp_path / "runs", run_id="s1")
+    return fake_session(scenario(**kw), tmp_path / "runs", run_id="s1")
 
 
 def events(session, name=None, stage=None):
@@ -73,7 +73,7 @@ def test_handoff_files_a_feature_issue_from_the_draft_story_linked_to_the_spike(
     result = s.start()
     new = s.ctx()["handoff_issue"]
     issue = s.run.github.get_issue(new)
-    assert issue.labels == ["foreman:feature"] and issue.title == "Track clicks per day for each short link"
+    assert issue.labels == ["foreman:from-spike"] and issue.title == "Track clicks per day for each short link"
     assert "As a link owner" in issue.body and "spike #1" in issue.body and f"PR #{result.pr}" in issue.body
     spike_comments = json.loads((s.run.dir / "github/issues/1.json").read_text())["comments"]
     assert any(f"#{new}" in c for c in spike_comments)

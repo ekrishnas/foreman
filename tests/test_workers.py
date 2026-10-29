@@ -1,9 +1,12 @@
 import json
 import sys
 
-from foreman.config import Agent
-from foreman.fake import FakeWorker
-from foreman.workers import ClaudeCodeWorker, Recorder, ReplayWorker, WorkerRequest, WorkerResult
+from foreman.adapters.workers import (
+    ClaudeCodeWorker,
+    WorkerRequest,
+)
+from foreman.core.config import Agent
+from tests.doubles.worker import FakeWorker
 
 AGENT = Agent("implementer", "mid", ["Read", "Write"], ["src/**"], ["design"])
 
@@ -142,21 +145,3 @@ def test_claude_worker_timeout(tmp_path):
 def test_claude_worker_missing_binary(tmp_path):
     r = ClaudeCodeWorker(claude_bin="/definitely/not/claude").run(make_req(tmp_path))
     assert "not found" in r.error
-
-
-# ---- Recorder / ReplayWorker ----
-
-def test_replay_reproduces_recorded_files_and_result(tmp_path):
-    rec = Recorder(tmp_path / "rec")
-    rec.save("implement-0", WorkerResult("DONE", 1, 2, 0.5, 10), {"src/a.py": "x = 1\n", "old.py": None})
-    work = tmp_path / "work"
-    (work / "src").mkdir(parents=True)
-    (work / "old.py").write_text("gone soon")
-    r = ReplayWorker(tmp_path / "rec").run(make_req(work))
-    assert r.text == "DONE" and r.cost_usd == 0.5
-    assert (work / "src/a.py").read_text() == "x = 1\n" and not (work / "old.py").exists()
-
-
-def test_replay_without_recording_is_an_error(tmp_path):
-    r = ReplayWorker(tmp_path / "rec").run(make_req(tmp_path))
-    assert "no recording" in r.error

@@ -1,9 +1,9 @@
-from foreman.config import load_target
-from foreman.gitops import Change
-from foreman.policy import check_changes, resolve_writable
+from foreman.adapters.gitops import Change
+from foreman.core.config import load_target
+from foreman.core.policy import check_changes, resolve_writable
 from tests.conftest import ROOT
 
-TARGET = load_target(ROOT / "targets/url-shortener.yaml")
+TARGET = load_target(ROOT / "examples/target.yaml", repo=ROOT)
 SRC = ["src/**"]
 
 

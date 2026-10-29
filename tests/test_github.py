@@ -2,8 +2,9 @@ import json
 
 import pytest
 
-from foreman.github import FakeGitHub, GitHub, Issue
-from foreman.util import ShResult
+from foreman.adapters.github import GitHub, Issue
+from foreman.core.util import ShResult
+from tests.doubles.github import FakeGitHub
 
 
 def write(repo, rel, text):
@@ -27,8 +28,8 @@ def test_issues_and_prs_share_one_number_sequence(fake, repo):
 
 
 def test_get_issue_round_trips_fields(fake):
-    n = fake.create_issue("Title", "Body", ["foreman:bugfix"])
-    assert fake.get_issue(n) == Issue(n, "Title", "Body", ["foreman:bugfix"])
+    n = fake.create_issue("Title", "Body", ["foreman:feature"])
+    assert fake.get_issue(n) == Issue(n, "Title", "Body", ["foreman:feature"])
 
 
 def test_comment_is_stored_on_the_issue(fake, tmp_path):
@@ -81,7 +82,6 @@ def test_close_without_merge_records_reviewer_comment(fake, repo):
 
 def test_push_and_ensure_repo_are_harmless(fake):
     fake.push("foreman/r1")
-    fake.push_tag("v1")
     fake.ensure_repo("url-shortener")
 
 
@@ -112,9 +112,10 @@ def test_create_issue_builds_gh_argv_and_parses_number(repo):
 
 
 def test_get_issue_parses_json(repo):
-    payload = json.dumps({"number": 5, "title": "T", "body": "B", "labels": [{"name": "foreman:spike"}]})
+    payload = json.dumps({"number": 5, "title": "T", "body": "B", "labels": [{"name": "foreman:feature"}],
+                          "comments": [{"body": "first"}, {"body": "second"}]})
     gh, _ = gh_with({"gh issue view": payload}, repo)
-    assert gh.get_issue(5) == Issue(5, "T", "B", ["foreman:spike"])
+    assert gh.get_issue(5) == Issue(5, "T", "B", ["foreman:feature"], ["first", "second"])
 
 
 def test_open_pr_appends_closes_and_parses_number(repo):
@@ -159,3 +160,27 @@ def test_ensure_repo_creates_and_protects_main_when_missing(repo):
     flat = [" ".join(c) for c in runner.calls]
     assert any(c.startswith("gh repo create o/url-shortener") for c in flat)
     assert any("branches/main/protection" in c for c in flat)
+
+
+def test_pr_url_asks_gh_for_the_url(repo):
+    gh, rec = gh_with({"gh pr view": "https://github.com/o/r/pull/9\n"}, repo)
+    assert gh.pr_url(9) == "https://github.com/o/r/pull/9"
+    assert ["gh", "pr", "view", "9", "--json", "url", "--jq", ".url"] in rec.calls
+
+
+def test_wait_for_merge_polls_until_the_pr_leaves_the_open_state(repo):
+    states = iter(["OPEN", "OPEN", "OPEN", "MERGED", "MERGED"])
+
+    def runner(cmd, cwd, input=None, **kw):
+        return ShResult(0, json.dumps({"state": next(states), "mergeCommit": None, "comments": [], "reviews": [], "body": ""}))
+
+    sleeps = []
+    assert GitHub(repo, runner=runner).wait_for_merge(4, interval=7, timeout=100, sleep=sleeps.append) == "merged"
+    assert sleeps == [7, 7, 7]  # three looks at an open PR, then it is merged
+
+
+def test_wait_for_merge_gives_up_after_the_timeout(repo):
+    def runner(cmd, cwd, input=None, **kw):
+        return ShResult(0, json.dumps({"state": "OPEN", "mergeCommit": None, "comments": [], "reviews": [], "body": ""}))
+
+    assert GitHub(repo, runner=runner).wait_for_merge(4, interval=10, timeout=25, sleep=lambda s: None) == "open"

@@ -2,11 +2,16 @@ from pathlib import Path
 
 import pytest
 
-from foreman.config import load_agents
-from foreman.nodes import (
-    gate_requirements, parse_bullets, parse_options, split_story, tick_tasks, validate_feature_checks,
+from foreman.core.config import load_agents
+from foreman.core.runner import SafeStop
+from foreman.workflows.new_implementation import gate_requirements
+from foreman.workflows.nodes import (
+    gate_observability,
+    gate_wrote,
+    parse_bullets,
+    tick_tasks,
+    validate_feature_checks,
 )
-from foreman.runner import SafeStop
 
 AGENTS, _ = load_agents(Path(__file__).resolve().parent.parent / "config/agents.yaml")
 
@@ -36,18 +41,46 @@ def test_requirements_gate_names_missing_sections(make_run):
     assert "Acceptance criteria" in gate_requirements(run, {}, "## Normalized requirement\nx")
 
 
-def test_requirements_gate_demands_impacted_files_for_brownfield(make_run, repo):
-    run = make_run({})
-    (repo.path / "src").mkdir()
-    (repo.path / "src/old.py").write_text("x")
-    repo.commit("existing code")
-    text = "## Normalized requirement\nx\n## Acceptance criteria\n- y\n"
-    assert "Impacted files" in gate_requirements(run, {}, text)
-
-
-def test_requirements_gate_does_not_demand_impacted_files_for_greenfield(make_run):
+def test_requirements_gate_does_not_need_impacted_files(make_run):
     run = make_run({})
     assert gate_requirements(run, {}, "## Normalized requirement\nx\n## Acceptance criteria\n- y\n") is None
+
+
+GOOD_NOTES = """Done.
+## Observability
+- Log location: logs/app.log
+- Success: `INFO shortened url`
+- Errors: `ERROR`
+"""
+
+
+def test_observability_gate_accepts_a_complete_section(make_run):
+    assert gate_observability(make_run({}), {}, GOOD_NOTES) is None
+
+
+def test_observability_gate_names_what_is_missing(make_run):
+    msg = gate_observability(make_run({}), {}, "Done.\n## Observability\n- Log location: logs/app.log\n")
+    assert "Success" in msg and "Error" in msg and "Log location" not in msg.split("missing:")[1]
+
+
+def test_observability_gate_demands_the_section(make_run):
+    assert "## Observability" in gate_observability(make_run({}), {}, "Implemented it.\nDONE: 1.1")
+
+
+def test_gate_wrote_counts_files_already_committed_on_the_branch(make_run, repo):
+    run = make_run({})
+    base = repo.head()
+    (repo.path / "tests").mkdir()
+    (repo.path / "tests/test_a.py").write_text("x")
+    repo.commit("earlier attempt")
+    assert gate_wrote("tests")(run, {"base_commit": base}, "") is None  # nothing new now, but the branch has the file
+
+
+def test_gate_wrote_fails_when_nothing_under_that_path_exists(make_run, repo):
+    run = make_run({})
+    (repo.path / "src").mkdir()
+    (repo.path / "src/a.py").write_text("x")
+    assert "no files under tests/**" in gate_wrote("tests")(run, {"base_commit": repo.head()}, "")
 
 
 def write_tasks(repo, text):
@@ -131,42 +164,3 @@ def test_validate_enforces_a_minimum_test_count(make_run, repo):
     ctx = {"change_id": "c-1", "base_commit": repo.git("rev-parse", "HEAD~1").strip()}
     failures, results = validate_feature_checks(run, ctx, min_tests=3)
     assert any("test count" in f for f in failures) and "tests: 1 passed (need 3)" in results
-
-
-OPTIONS = """## Context
-c
-## Options
-### Option 1: Nightly batch
-Body one.
-More.
-### 2. Event stream
-Body two.
-### option-3: Counters
-Body three.
-## Constraints
-- c
-"""
-
-
-def test_parse_options_numbers_by_position_and_strips_prefixes():
-    opts = parse_options(OPTIONS)
-    assert [(o["id"], o["title"]) for o in opts] == [
-        ("option-1", "Nightly batch"), ("option-2", "Event stream"), ("option-3", "Counters")]
-    assert opts[0]["body"] == "Body one.\nMore."
-
-
-def test_parse_options_without_an_options_section_is_empty():
-    assert parse_options("## Context\nx") == []
-
-
-def test_split_story_uses_the_heading_as_title_and_the_rest_as_body():
-    assert split_story("# Track clicks\n\nAs a user I want x.") == ("Track clicks", "As a user I want x.")
-
-
-def test_split_story_without_heading_uses_the_first_line():
-    assert split_story("As a user I want x.\nMore") == ("As a user I want x.", "As a user I want x.\nMore")
-
-
-def test_split_story_accepts_a_heading_of_any_level():
-    assert split_story("### Track clicks\n\nAs a user I want x.\n\n#### Acceptance criteria\n- a") == (
-        "Track clicks", "As a user I want x.\n\n#### Acceptance criteria\n- a")

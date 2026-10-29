@@ -1,8 +1,8 @@
 import pytest
 
-from foreman.config import Agent
-from foreman.context import MissingContext, build_prompt
-from foreman.store import CostEvent
+from foreman.core.config import Agent
+from foreman.core.context import MissingContext, build_prompt
+from foreman.state.store import CostEvent
 
 IMPL = Agent("implementer", "mid", ["Read"], ["src/**"], ["design", "tasks", "last_failure?"])
 READONLY = Agent("analyst", "strong", ["Read"], [], ["repo_tree"])
