@@ -208,7 +208,9 @@ def check_build_and_tests(run: Run, min_tests: int = 1) -> tuple[list[str], list
     return failures, results
 
 
-FOREMAN_OWNED = ["openspec/specs/**", "openspec/changes/archive/**"]  # only Foreman's own code writes these (archiving)
+# Not an agent's to write: Foreman's code archives specs, and the developer commits the skill and the profile. The
+# branch check tolerates them (a setup commit may land on a run's branch); an agent's own stage check still blocks them.
+FOREMAN_OWNED = ["openspec/specs/**", "openspec/changes/archive/**", ".claude/skills/foreman/**", ".foreman/**"]
 
 
 def check_branch_policy(run: Run, ctx: dict) -> tuple[list[str], list[str]]:

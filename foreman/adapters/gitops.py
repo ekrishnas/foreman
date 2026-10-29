@@ -56,6 +56,11 @@ class GitRepo:
         self.git("checkout", "-q", "-b", branch, start_ref)
         return self.head()
 
+    def switch_to(self, branch: str) -> None:
+        """Check `branch` out again: a run continues on its own branch, wherever the repository was left."""
+        if self.branch() != branch:
+            self.git("checkout", "-q", branch)
+
     def changes(self) -> list[Change]:
         parts = self.git("status", "--porcelain=v1", "-z", "-uall").split("\0")
         out, i = [], 0

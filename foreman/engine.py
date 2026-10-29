@@ -140,7 +140,11 @@ class Session:
         return drive(self, {"ctx": {}})
 
     def resume(self) -> Result:
-        return drive(self, None) if self.graph else self.start()  # no graph yet: classification never finished
+        if not self.graph:
+            return self.start()  # classification never finished
+        if self.run.workflow != "observe":  # observe has no branch
+            self.run.repo.switch_to(self.run.branch)
+        return drive(self, None)
 
 
 def open_session(config: RunConfig, runs_dir: Path, checkpointer, run_id: str | None = None, store=None,
@@ -173,6 +177,16 @@ def drive(session: Session, input_) -> Result:
     return Result("completed", ctx.get("summary", ""), ctx.get("pr_number"))
 
 
+def restart_from_approval(session: Session, approved_commit: str) -> None:
+    """After a rollback, make `resume` carry on from the checkpoint taken when the proposal was approved. Its state
+    matches the rolled-back tree, so the code-writing stages run again with a fresh count of validation attempts.
+    (Resuming into `validate` would only check a tree with no code in it, and fail at once.)"""
+    since_approval = [s for s in session.graph.get_state_history(session.config)
+                      if s.values.get("ctx", {}).get("approved_commit") == approved_commit]
+    if since_approval:  # newest first, so the last one is right after the approval
+        session.graph.update_state(since_approval[-1].config, None, as_node="__copy__")
+
+
 def safe_stop(session: Session, stop: SafeStop) -> Result:
     run = session.run
     run.audit(stop.stage or "run", "safe_stop", reason=stop.reason)
@@ -180,5 +194,6 @@ def safe_stop(session: Session, stop: SafeStop) -> Result:
     if stop.rollback and ctx.get("approved_commit"):
         run.repo.reset_hard(ctx["approved_commit"])
         run.audit(stop.stage or "run", "rollback", to=ctx["approved_commit"])
+        restart_from_approval(session, ctx["approved_commit"])
     run.github.comment(run.issue_id, f"Foreman stopped the run: {stop.reason}")
     return Result("safe_stopped", stop.reason, ctx.get("pr_number"))

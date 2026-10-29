@@ -126,7 +126,7 @@ In Claude Code, type `/foreman update`. It updates your Foreman checkout (and ru
 
 ### When a run stops
 
-A run ends `safe_stopped` with a reason when a stage fails three times, validation fails three times (the branch is rolled back to the approved commit), the budget is spent, a PR is closed unmerged, or no one answers for 24 hours. The reason is printed and posted on the issue. Fix the cause (for example raise `budget_usd` in `runs/<id>/run.json`, or merge the PR), then `foreman resume <id>`.
+A run ends `safe_stopped` with a reason when a stage fails three times, validation fails three times (the branch is rolled back to the approved commit), the budget is spent, a PR is closed unmerged, or no one answers for 24 hours. The reason is printed and posted on the issue. Fix the cause (for example raise `budget_usd` in `runs/<id>/run.json`, or merge the PR), then `foreman resume <id>`. Resume switches the repository back to the run's branch first. After a validation stop it carries on from the approved proposal, so implement, tests and docs run again with a fresh three attempts (it does not re-check the rolled-back tree). Do not commit on a `foreman/` branch yourself, and switch to your own branch before committing setup files: a commit there goes into the run's pull request. (A skill or profile commit on the branch is tolerated by the policy check, but it is still in the PR.)
 
 ### Checking what happened
 

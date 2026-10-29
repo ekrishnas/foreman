@@ -138,3 +138,17 @@ def test_snapshot_and_restore_round_trip(repo):
     repo.restore(snap)
     assert (repo.path / "a.txt").read_text() == "edited"
     assert (repo.path / "n/b.txt").read_text() == "new"
+
+
+def test_switch_to_returns_to_a_branch_and_does_nothing_when_already_there(repo):
+    repo.start_run("foreman/r1", "main")
+    repo.git("checkout", "-q", "main")
+    repo.switch_to("foreman/r1")
+    assert repo.branch() == "foreman/r1"
+    repo.switch_to("foreman/r1")
+    assert repo.branch() == "foreman/r1"
+
+
+def test_switch_to_a_branch_that_does_not_exist_names_it(repo):
+    with pytest.raises(RepoError, match="foreman/nope"):
+        repo.switch_to("foreman/nope")

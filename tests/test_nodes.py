@@ -2,7 +2,10 @@ from pathlib import Path
 
 import pytest
 
+from foreman.adapters.gitops import Change
 from foreman.core.config import load_agents
+from foreman.core.context import writable_for
+from foreman.core.policy import check_changes
 from foreman.core.runner import SafeStop
 from foreman.workflows.new_implementation import gate_requirements
 from foreman.workflows.nodes import (
@@ -180,6 +183,26 @@ def test_a_failed_validation_comment_shows_the_detail_of_each_failure(make_run):
     assert "Validation failed (attempt 1 of 3)" in comment
     assert "error CS1002: ; expected" in comment and "- 1.1 make the project" in comment
     assert "build: FAIL" in comment
+
+
+def test_validate_tolerates_the_developers_setup_commits_on_the_branch(make_run, repo):
+    run = make_run(AGENTS)
+    make_valid_change(repo)
+    for rel in (".claude/skills/foreman/SKILL.md", ".foreman/target.yaml"):
+        (repo.path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (repo.path / rel).write_text("setup\n")
+    repo.commit("work")
+    ctx = {"change_id": "c-1", "base_commit": repo.git("rev-parse", "HEAD~1").strip()}
+    failures, results = validate_feature_checks(run, ctx)
+    assert failures == [] and "policy: clean" in results
+
+
+def test_an_agent_still_cannot_write_the_skill_or_the_profile(make_run):
+    run = make_run(AGENTS)
+    writable = writable_for(run, AGENTS["implementer"], {"change_id": "c-1"})
+    changes = [Change("M", ".claude/skills/foreman/SKILL.md"), Change("M", ".foreman/target.yaml")]
+    findings = check_changes(changes, "", writable, run.target)
+    assert [f.kind for f in findings if f.blocking] == ["path", "path"]
 
 
 def test_validate_flags_a_secret_anywhere_on_the_branch(make_run, repo):

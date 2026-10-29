@@ -125,3 +125,26 @@ def test_a_classifier_that_never_follows_the_format_safe_stops_before_any_branch
     result = session.start()
     assert result.status == "safe_stopped" and "Type:" in result.reason
     assert session.run.repo.branch() == "main"
+
+
+def test_resume_after_a_validation_rollback_runs_the_code_stages_again(tmp_path):
+    session, result = run_scenario("rollback", tmp_path)
+    assert result.status == "safe_stopped"
+    assert session.resume().status == "completed"
+    rows = session.run.store.cost_events(run_id="f1")
+    assert [sum(1 for c in rows if c.stage == stage) for stage in ("implement", "tests", "docs")] == [4, 4, 4]
+
+
+def test_resume_goes_back_to_the_runs_branch_before_any_agent_works(tmp_path):
+    session, _ = run_scenario("rollback", tmp_path)
+    repo, seen = session.run.repo, []
+    inner = session.run.worker.run
+
+    def spy(req):
+        seen.append(repo.branch())
+        return inner(req)
+
+    session.run.worker.run = spy
+    repo.git("checkout", "-q", "main")  # where a developer's own work may have left the repository
+    assert session.resume().status == "completed"
+    assert seen and set(seen) == {session.run.branch}

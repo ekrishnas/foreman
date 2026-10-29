@@ -250,7 +250,7 @@ Foreman never prompts on its own terminal, because it is usually started by Clau
 - **Retries:** max 2 per stage, previous failure fed back as context.
 - **Review:** a CRITICAL issue from the reviewer fails validation (7.9).
 - **Rollback:** before merge, a validation that fails 3 times resets the run branch to the last approved commit.
-- **Safe-stop:** persist state, record the reason, comment on the issue, exit non-zero, resumable with `foreman resume`.
+- **Safe-stop:** persist state, record the reason, comment on the issue, exit non-zero, resumable with `foreman resume`. Resume switches the repository back to the run's branch; after a validation stop (which rolls back to the approved commit) it carries on from the approved proposal, so the code-writing stages run again with a fresh count of attempts.
 
 ## 11. Cost tracking
 

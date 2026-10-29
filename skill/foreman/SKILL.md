@@ -148,7 +148,7 @@ Foreman knows nothing about any product until `PRODUCT/.foreman/target.yaml` exi
 
 Foreman refuses to start a branch from a dirty working tree, and anything uncommitted would look like an agent's change. Run `git status --porcelain`.
 
-- If the only changes are setup files (`.claude/` including OpenSpec's skills and commands, `.foreman/`, `openspec/`, `.gitignore`), tell the developer which ones and ask permission to commit them ("Add Foreman and OpenSpec setup"). Commit on the current branch; do not push.
+- If the only changes are setup files (`.claude/` including OpenSpec's skills and commands, `.foreman/`, `openspec/`, `.gitignore`), tell the developer which ones and ask permission to commit them ("Add Foreman and OpenSpec setup"). Commit on the developer's own branch and do not push, but **never on a `foreman/` branch**: run `git rev-parse --abbrev-ref HEAD` first. A stopped or finished run leaves the repository on its `foreman/<run id>` branch, and a commit there ends up in that run's pull request and fails its policy check. If the branch starts with `foreman/`, tell the developer and ask permission to switch to the base branch first (`git switch main`, or the one they name); the setup changes come along. `foreman resume` returns to the run's branch by itself.
 - If there are other uncommitted changes, tell the developer to commit or stash them first. (A log check, "is deployed, check the logs", does not need a clean tree.)
 
 ## 7. Get an issue, then start the run
@@ -219,7 +219,7 @@ Do steps 1 and 2 (find the product and the Foreman folder), then:
 3. **Check the product.** Run `foreman doctor --repo "PRODUCT"`. This is the new version's code, so it knows the newest settings. It prints:
    - `skill: current | differs | not installed`. If `differs`, tell the developer the product's copy of this skill is out of date and ask permission to replace it; on yes run `foreman doctor --repo "PRODUCT" --install-skill`. The new skill applies from the next `/foreman`; this conversation still follows the old text. If `not installed`, they probably use a personal copy: leave it.
    - `profile: ...` lists settings that `.foreman/target.yaml` does not have yet, each with what it does. Explain each in a line and ask which to add: recommend `paths.ci` and `paths.ignore` when stories need CI workflows or snapshot tests, and `requires: [docker]` only if the tests need Docker (otherwise `requires: []`, which also stops the question coming back). Edit the profile only after they confirm, and keep its comments.
-4. **Commit.** Changed setup files (the skill copy, `.foreman/target.yaml`) are committed as in step 6: with permission, on the current branch, not pushed ("Update Foreman skill and profile").
+4. **Commit.** Changed setup files (the skill copy, `.foreman/target.yaml`) are committed as in step 6: with permission, not pushed, and never on a `foreman/` branch ("Update Foreman skill and profile").
 5. **Report** in a few lines: the old and new version, what is new in plain words (group the commit subjects), what you changed in the product, and what is left for them.
 
 ## Never
