@@ -45,7 +45,7 @@ def test_reproduce_is_committed_before_fix(tmp_path):
     s = session_for(tmp_path)
     s.start()
     log = s.run.repo.git("log", "--reverse", "--format=%s", "--first-parent", "foreman/b1").splitlines()
-    assert log.index("foreman: reproduce") < log.index("foreman: fix") < log.index("foreman: rca")
+    assert log.index("test: add a failing reproduction") < log.index("fix: resolve the bug") < log.index("docs: add the root cause analysis")
 
 
 def test_rca_document_has_every_required_section_and_pr_links_it(tmp_path):

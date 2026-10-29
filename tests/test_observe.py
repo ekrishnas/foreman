@@ -3,11 +3,13 @@ from dataclasses import replace
 
 import pytest
 
+from foreman.branching import Branching
+from foreman.commits import lint
 from foreman.config import Scenario
 from foreman.engine import RunRefused, ensure_ready, open_session
 from foreman.fake import BEHAVIORS
 from foreman.github import FakeGitHub
-from foreman.observe import run_smoke, verdict
+from foreman.observe import open_revert_pr, run_smoke, verdict
 from tests.conftest import ROOT
 
 SLO = {"error_rate_max": 0.01, "p95_ms_max": 200}
@@ -145,3 +147,16 @@ def test_issue_awaiting_approval_is_refused_until_a_human_labels_it_ready(tmp_pa
 def test_ordinary_issue_needs_no_label_to_run(tmp_path, repo):
     gh = FakeGitHub(tmp_path / "gh", repo)
     ensure_ready(gh.get_issue(gh.create_issue("Plain", "body", ["foreman:feature"])))
+
+
+def test_the_revert_branch_follows_the_confirmed_branching_and_has_a_conventional_message(make_run):
+    run = make_run({})
+    run.repo.git("checkout", "-q", "-b", "develop", "main")
+    (run.repo.path / "a.txt").write_text("a\n")
+    sha = run.repo.commit("feat: add a")
+    run.branching = Branching("develop", "feature/")
+    pr = open_revert_pr(run, {"merge_sha": sha, "pr_number": 2, "issue_title": "Add a"}, "p95 too slow", "summary")
+    assert run.github._read("prs", pr)["branch"] == "feature/revert-r1"
+    message = run.repo.git("log", "-1", "--format=%B", "feature/revert-r1").split("\n\nCo-Authored-By")[0]
+    assert lint(message) == [] and message.startswith("fix: revert PR #2")
+    assert run.repo.branch() == "develop"

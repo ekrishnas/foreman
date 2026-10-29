@@ -1,6 +1,6 @@
 from foreman.config import load_target
 from foreman.gitops import Change
-from foreman.policy import check_changes, resolve_writable
+from foreman.policy import check_changes, find_secrets, resolve_writable
 from tests.conftest import ROOT
 
 TARGET = load_target(ROOT / "targets/url-shortener.yaml")
@@ -73,3 +73,9 @@ def test_ci_and_docker_config_need_approval():
     ch = [Change("M", ".github/workflows/ci.yml"), Change("M", "Dockerfile")]
     f = check_changes(ch, "", [".github/**", "Dockerfile"], TARGET)
     assert kinds(f) == [("config", False), ("config", False)]
+
+
+def test_find_secrets_names_every_kind_found():
+    assert find_secrets('AWS_KEY = "AKIAABCDEFGHIJKLMNOP"') == ["aws-access-key"]
+    assert find_secrets('-----BEGIN RSA PRIVATE KEY-----\npassword = "hunter2hunter2"') == ["private-key", "credential-assignment"]
+    assert find_secrets("no secrets here") == []

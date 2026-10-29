@@ -6,10 +6,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+from foreman.branching import Branching
+from foreman.commits import clean, fallback, lint
 from foreman.config import Agent, Scenario, Target, allowed_tools
 from foreman.context import PROVIDERS, MissingContext, build_prompt, writable_for
 from foreman.gitops import GitRepo, RepoError
-from foreman.policy import check_changes
+from foreman.policy import check_changes, find_secrets
 from foreman.specs import SpecAdapter
 from foreman.store import AuditEvent, CostEvent
 from foreman.util import sha, slug
@@ -48,9 +50,10 @@ class Run:
     max_retries: int = 2
     deploy_env: dict = field(default_factory=dict)  # extra env for the deploy/smoke/stop commands
     check_health: bool = True  # wait for the target's health_url before smoke traffic
+    branching: Branching = field(default_factory=Branching)  # confirmed by the developer in live mode
     # One lock around worker call, diff check and commit, so parallel graph branches
-    # never see each other's uncommitted changes.
-    lock: threading.Lock = field(default_factory=threading.Lock)
+    # never see each other's uncommitted changes. Re-entrant: the commit message is written by a nested stage.
+    lock: threading.RLock = field(default_factory=threading.RLock)
 
     @property
     def workflow(self) -> str:
@@ -58,7 +61,11 @@ class Run:
 
     @property
     def branch(self) -> str:
-        return f"foreman/{self.run_id}"
+        return f"{self.branching.prefix}{self.run_id}"
+
+    @property
+    def base(self) -> str:
+        return self.branching.base
 
     @property
     def dir(self) -> Path:
@@ -160,7 +167,7 @@ def _run_stage(run: Run, stage: Stage, ctx: dict, done: dict, instance: str, nam
                 if stage.after:
                     updates |= stage.after(run, {**ctx, **updates}, result.text) or {}
                 output = sha(result.text)
-                commit = run.repo.commit(f"foreman: {name}") if stage.commit else ""
+                commit = commit_changes(run, {**ctx, **updates}, name) if stage.commit else ""
                 run.audit(name, "stage_passed", attempt=call, model=model, duration_ms=result.duration_ms,
                           inputs=inputs, output=output, commit=commit, findings=[f.detail for f in findings])
                 return {"ctx": updates, "done": {name: {"inputs": inputs, "output": output}}}
@@ -172,3 +179,62 @@ def _run_stage(run: Run, stage: Stage, ctx: dict, done: dict, instance: str, nam
                     raise SafeStop(f"{name}: {e}") from e
             run.audit(name, "attempt_failed", attempt=call, model=model, reason=failure)
     raise SafeStop(f"{name} failed after {len(plan)} attempts: {failure}")
+
+
+# --- commits ---------------------------------------------------------------------------------------------------
+
+MAX_DIFF_CHARS = 30_000
+
+
+def gate_commit_message(run: Run, ctx: dict, text: str) -> str | None:
+    """Exit gate for the committer: the Conventional Commits rules, or a WARNING that commit_changes turns into a halt."""
+    if text.lstrip().startswith("WARNING"):
+        return None
+    return "; ".join(lint(clean(text))) or None
+
+
+COMMIT_MESSAGE = Stage("commit_message", "committer", produces="commit_message", gate=gate_commit_message,
+                       commit=False, sandbox=True)
+
+
+def _halt(run: Run, name: str, reason: str):
+    """Discard the uncommitted changes and stop; a commit that was refused leaves nothing behind."""
+    try:
+        run.repo.reset_hard()
+    except RepoError as e:
+        raise SafeStop(f"{name}: {e}") from e
+    raise SafeStop(reason, stage=name)
+
+
+def _write_message(run: Run, ctx: dict, name: str, diff: str) -> str:
+    shown = diff if len(diff) <= MAX_DIFF_CHARS else diff[:MAX_DIFF_CHARS] + "\n(diff truncated)\n"
+    try:
+        out = run_stage(run, COMMIT_MESSAGE, {**ctx, "commit_stage": name, "commit_diff": shown}, {}, instance=name)
+    except SafeStop:
+        if run.run_cost() >= run.scenario.budget_usd:
+            raise  # out of budget is a reason to stop, a badly worded message is not
+        run.audit(name, "commit_message_fallback")
+        return fallback(name)
+    message = clean(out["ctx"]["commit_message"])
+    if message.startswith("WARNING"):
+        _halt(run, name, message)
+    return message
+
+
+def commit_changes(run: Run, ctx: dict, name: str) -> str:
+    """Commit the working tree with a Conventional Commits message written by the committer agent.
+
+    The stage's fixed message is used when there is no committer agent, nothing changed, or the agent keeps
+    breaking the rules. A secret in the changes, or a WARNING from the agent, halts the run instead.
+    """
+    with run.lock:
+        run.repo.git("add", "-A")
+        diff = run.repo.git("diff", "--cached", "--no-color", "-U2")
+        message = fallback(name)
+        if diff.strip():
+            if secrets := find_secrets(run.repo.added_text()):
+                _halt(run, name, f"WARNING: possible secret ({', '.join(secrets)}) in the changes to commit; "
+                                 "nothing was committed and the changes were discarded")
+            if "committer" in run.agents:
+                message = _write_message(run, ctx, name, diff)
+        return run.repo.commit(message)

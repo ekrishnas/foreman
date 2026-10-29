@@ -10,7 +10,7 @@ from langgraph.types import Send, interrupt
 from foreman.pr import build_body
 from foreman.policy import check_changes
 from foreman.context import writable_for
-from foreman.runner import Run, SafeStop, Stage, run_stage
+from foreman.runner import Run, SafeStop, Stage, commit_changes, run_stage
 from foreman.util import count_failed, count_tests, count_total, glob_match, merge_dicts, section, sh, slug
 
 
@@ -257,7 +257,7 @@ def archive_spec(run: Run):
             run.spec.archive(state["ctx"]["change_id"])
         except RuntimeError as e:
             raise SafeStop(str(e), stage="archive_spec") from e
-        run.repo.commit("foreman: archive_spec")
+        commit_changes(run, state["ctx"], "archive_spec")
         passed(run, "archive_spec")
         return {}
     return node
@@ -523,7 +523,7 @@ def prune_scratch(run: Run):
         if scratch.exists():
             shutil.copytree(scratch, run.dir / "spikes", dirs_exist_ok=True)
             run.repo.git("rm", "-r", "-q", "-f", f"spikes/{run.run_id}")
-            run.repo.commit("foreman: drop exploration scratch")
+            commit_changes(run, state["ctx"], "prune_scratch")
         passed(run, "prune_scratch")
         return {}
     return node

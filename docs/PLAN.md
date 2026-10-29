@@ -219,4 +219,7 @@ docker-compose.yml  README.md
 - Attempt numbers are a per-stage-instance call counter taken from the cost table, so retries, fallbacks and validation loop-backs all show up as `attempt > 0` in the retry-spend figure.
 - A failed validation re-enters the parallel fan-out; the unchanged stages are skipped by input hash instead of re-run.
 - `FileStore` reads the `audit.jsonl` / `cost.jsonl` exports so `foreman metrics` and `foreman cost` work without a database.
+- Commits follow the developer-authored model: author and committer come from git config, Foreman is the `Co-Authored-By` trailer, and Foreman authors only when git has no identity.
+- Commit messages are Conventional Commits, written by a small `committer` agent run as a nested sandboxed stage (so it is costed, audited, retried and recorded like any other) and linted in `foreman/commits.py`; the run lock is re-entrant for this. A fixed per-stage message is the fallback; a secret in the diff halts the commit.
+- Live runs check that origin has a base branch and ask the developer to confirm the base and the branch prefix (`foreman/branching.py`) before any issue is filed; the choice is saved in `run.json`. Runs start from `origin/<base>`.
 - Added beyond the plan: `foreman resume --poll`, status comments on the issue at every gate, `prepare_live_target` (creates the local and GitHub repos on the first greenfield run), `RunRefused` for issues awaiting `foreman:ready`.

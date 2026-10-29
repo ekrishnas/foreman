@@ -1,4 +1,5 @@
 import json
+import subprocess
 
 import pytest
 
@@ -159,3 +160,24 @@ def test_ensure_repo_creates_and_protects_main_when_missing(repo):
     flat = [" ".join(c) for c in runner.calls]
     assert any(c.startswith("gh repo create o/url-shortener") for c in flat)
     assert any("branches/main/protection" in c for c in flat)
+
+
+def test_open_pr_targets_main_unless_another_base_was_confirmed(repo):
+    gh, rec = gh_with({"gh pr create": "https://github.com/o/r/pull/9\n"}, repo)
+    gh.open_pr("foreman/r1", "T", "B", [], closes=None)
+    gh.base = "develop"
+    gh.open_pr("foreman/r1", "T", "B", [], closes=None)
+    bases = [c[c.index("--base") + 1] for c in rec.calls if c[:3] == ["gh", "pr", "create"]]
+    assert bases == ["main", "develop"]
+
+
+def test_merged_commit_syncs_the_confirmed_base_branch(repo, tmp_path):
+    origin = tmp_path / "origin.git"
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "develop", str(origin)], check=True)
+    repo.git("remote", "add", "origin", str(origin))
+    repo.git("push", "-q", "origin", "main:develop")
+    payload = json.dumps({"state": "MERGED", "mergeCommit": {"oid": "abc"}, "comments": [], "reviews": []})
+    gh, _ = gh_with({"gh pr view": payload}, repo)
+    gh.base = "develop"
+    assert gh.merged_commit(3) == "abc"
+    assert repo.branch() == "develop"

@@ -3,13 +3,15 @@ import time
 
 import pytest
 
+from foreman.branching import Branching
 from foreman.config import Agent
 from foreman.human import ScriptedHuman
-from foreman.runner import SafeStop, Stage, run_stage
+from foreman.runner import SafeStop, Stage, commit_changes, run_stage
 from foreman.workers import Recorder, WorkerResult
 
 IMPL = Agent("implementer", "mid", ["Read", "Write"], ["src/**"], ["design"])
 STRONG = Agent("architect", "strong", ["Read", "Write"], ["src/**"], ["design"])
+COMMITTER = Agent("committer", "small", ["Read"], [], ["commit_stage", "commit_diff", "issue_title?"])
 CTX = {"design": "the design"}
 
 
@@ -36,7 +38,7 @@ def test_stage_passes_commits_and_records_one_cost_row(make_run):
     out = run_stage(run, stage(), CTX, {})
     assert out["ctx"]["implemented"] == "DONE: 1.1"
     assert run.repo.head() != before and run.repo.changes() == []
-    assert run.repo.git("log", "-1", "--format=%s").strip() == "foreman: implement"
+    assert run.repo.git("log", "-1", "--format=%s").strip() == "feat: implement the change"  # no committer agent here
     costs = run.store.cost_events(run_id="r1")
     assert len(costs) == 1 and costs[0].attempt == 0 and costs[0].model == "claude-sonnet-5-5"
     assert len(events(run, "stage_passed")) == 1
@@ -234,3 +236,107 @@ def test_concurrent_stages_do_not_mix_their_diffs(make_run):
     log = run.repo.git("log", "--name-only", "--format=%s", "-2")
     assert "a/x.py" in log and "b/y.py" in log
     assert run.repo.git("show", "--name-only", "--format=", "HEAD").count("/") == 1
+
+
+# --- commit messages -------------------------------------------------------------------------------------------
+
+def committing(make_run, committer, **kw):
+    return make_run({"implementer": IMPL, "committer": COMMITTER}, {"implementer": writes(), "committer": committer}, **kw)
+
+
+def subject(run):
+    return run.repo.git("log", "-1", "--format=%s").strip()
+
+
+def test_the_commit_uses_the_message_the_committer_wrote(make_run):
+    run = committing(make_run, lambda req, fault: "feat: add the thing\n\n- add a.py")
+    run_stage(run, stage(), CTX, {})
+    assert subject(run) == "feat: add the thing"
+    assert "- add a.py" in run.repo.git("log", "-1", "--format=%b")
+
+
+def test_the_committer_sees_the_stage_and_the_staged_diff(make_run):
+    prompts = []
+
+    def committer(req, fault):
+        prompts.append(req.prompt)
+        return "feat: add the thing"
+
+    run = committing(make_run, committer)
+    run_stage(run, stage(), {**CTX, "issue_title": "Count clicks"}, {})
+    assert "## commit_stage\nimplement" in prompts[0] and "## issue_title\nCount clicks" in prompts[0]
+    assert "+++ b/src/a.py" in prompts[0] and "+x = 1" in prompts[0]
+
+
+def test_the_committer_is_a_sandboxed_read_only_stage_that_is_costed_and_audited(make_run):
+    run = committing(make_run, lambda req, fault: "feat: add the thing")
+    run_stage(run, stage(), CTX, {})
+    rows = {c.stage: c for c in run.store.cost_events(run_id="r1")}
+    assert set(rows) == {"implement", "commit_message/implement"} and rows["commit_message/implement"].model == "claude-haiku-5-5"
+    assert (run.dir / "sandbox").is_dir() and run.repo.changes() == []
+
+
+def test_a_message_that_breaks_the_rules_is_retried_with_the_violations_in_the_prompt(make_run):
+    answers, prompts = iter(["Added the thing.", "feat: add the thing"]), []
+
+    def committer(req, fault):
+        prompts.append(req.prompt)
+        return next(answers)
+
+    run = committing(make_run, committer)
+    run_stage(run, stage(), CTX, {})
+    assert subject(run) == "feat: add the thing"
+    assert "type" in prompts[1] and "period" in prompts[1]
+
+
+def test_a_committer_that_never_follows_the_rules_falls_back_to_the_stage_message(make_run):
+    run = committing(make_run, lambda req, fault: "did some stuff")
+    run_stage(run, stage(), CTX, {})
+    assert subject(run) == "feat: implement the change"
+    assert len(events(run, "commit_message_fallback")) == 1 and len(events(run, "stage_passed")) == 1
+
+
+def test_a_message_wrapped_in_a_code_fence_is_unwrapped(make_run):
+    run = committing(make_run, lambda req, fault: "```\nfeat: add the thing\n```")
+    run_stage(run, stage(), CTX, {})
+    assert subject(run) == "feat: add the thing"
+
+
+def test_a_stage_without_changes_commits_the_stage_message_without_calling_the_committer(make_run):
+    calls = []
+    run = committing(make_run, lambda req, fault: calls.append(1) or "feat: add the thing")
+    run.repo.commit("seed")
+    commit_changes(run, {}, "triage")
+    assert subject(run) == "docs: add the bug triage" and calls == []
+
+
+def test_a_secret_in_the_changes_halts_the_commit_before_the_committer_sees_it(make_run):
+    calls = []
+    run = committing(make_run, lambda req, fault: calls.append(1) or "feat: add the thing")
+    before = run.repo.head()
+    (run.repo.path / "config.py").write_text('AWS_KEY = "AKIAABCDEFGHIJKLMNOP"\n')
+    with pytest.raises(SafeStop, match="WARNING.*aws-access-key") as stop:
+        commit_changes(run, {}, "archive_spec")
+    assert stop.value.stage == "archive_spec" and calls == []
+    assert run.repo.head() == before and run.repo.changes() == []  # nothing committed, the secret is gone
+
+
+def test_a_warning_from_the_committer_halts_the_commit(make_run):
+    run = committing(make_run, lambda req, fault: "WARNING: the diff contains a password")
+    before = run.repo.head()
+    with pytest.raises(SafeStop, match="WARNING: the diff contains a password"):
+        run_stage(run, stage(), CTX, {})
+    assert run.repo.head() == before and run.repo.changes() == []
+
+
+def test_running_out_of_budget_while_writing_the_message_still_stops_the_run(make_run):
+    run = committing(make_run, lambda req, fault: "did some stuff", budget=0.055)  # implementer 0.05, then haiku 0.01 each
+    with pytest.raises(SafeStop, match="budget exceeded"):
+        run_stage(run, stage(), CTX, {})
+
+
+def test_the_run_branch_and_base_come_from_the_confirmed_branching(make_run):
+    run = make_run({})
+    assert run.branch == "foreman/r1" and run.base == "main"
+    run.branching = Branching("develop", "feature/")
+    assert run.branch == "feature/r1" and run.base == "develop"

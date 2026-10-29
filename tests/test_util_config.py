@@ -110,7 +110,7 @@ def test_sh_missing_executable_gives_127(tmp_path):
 
 def test_load_agents_has_the_fourteen_design_agents():
     agents, models = load_agents(ROOT / "config/agents.yaml")
-    assert len(agents) == 14
+    assert len(agents) == 15
     assert agents["implementer"].tier == "mid"
     assert agents["requirements_analyst"].writable == []
     assert models["strong"] == "claude-opus-5-5"

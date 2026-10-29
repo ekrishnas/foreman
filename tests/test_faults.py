@@ -45,7 +45,7 @@ def test_retry_then_success_loops_back_to_implement_and_skips_unchanged_stages(t
 def test_retry_cost_is_visible_separately_in_the_pr_body(tmp_path):
     session, result = run_scenario("retry-then-success", tmp_path)
     body = session.run.github._read("prs", result.pr)["body"]
-    assert "retries and re-runs: $0.05" in body
+    assert "retries and re-runs: $0.06" in body
 
 
 def test_fallback_escalates_to_the_strong_model_exactly_once(tmp_path):
@@ -106,7 +106,7 @@ def test_resume_after_a_parallel_branch_fails_does_not_redo_the_others(tmp_path)
     assert sum(1 for c in rows if c.agent == "implementer") == 1
     assert sum(1 for c in rows if c.agent == "doc_writer") == 1
     commits = session.run.repo.git("log", "--format=%s", "main").splitlines()
-    assert commits.count("foreman: implement") == 1 and commits.count("foreman: docs") == 1
+    assert commits.count("feat: implement the change") == 1 and commits.count("docs: document the change") == 1
 
 
 def test_failed_validation_is_reported_on_the_issue_thread(tmp_path):

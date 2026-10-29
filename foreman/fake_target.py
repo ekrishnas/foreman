@@ -124,13 +124,13 @@ def make_fake_target(path: Path, start_ref: str = "main") -> GitRepo:
         raise ValueError(f"unknown fake start_ref {start_ref!r}")
     repo = GitRepo.init(path)
     write_files(repo.path, SCAFFOLD)
-    repo.commit("scaffold")
+    repo.commit("chore: scaffold the project")
     if start_ref != "main":
         write_files(repo.path, V1_FILES)
-        repo.commit("v1: url shortener")
+        repo.commit("feat: add the url shortener")
         repo.git("tag", "v1")
     if start_ref == "v1-regressed":
         write_files(repo.path, {"src/shortener.py": SHORTENER_REGRESSED})
-        repo.commit("performance: cache the click counter")
+        repo.commit("perf: cache the click counter")
         repo.git("tag", "v1-regressed")
     return repo

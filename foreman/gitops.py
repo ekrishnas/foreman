@@ -1,12 +1,16 @@
 import os
 import subprocess
 from dataclasses import dataclass
+from functools import cached_property
 from pathlib import Path
 
-IDENTITY = {
+# Commits are authored by the developer (their git config) with Foreman as co-author. Foreman
+# only authors a commit when git has no identity at all (throwaway fake-mode repos, CI).
+FOREMAN_IDENTITY = {
     "GIT_AUTHOR_NAME": "Foreman", "GIT_AUTHOR_EMAIL": "foreman@localhost",
     "GIT_COMMITTER_NAME": "Foreman", "GIT_COMMITTER_EMAIL": "foreman@localhost",
 }
+CO_AUTHOR = "Co-Authored-By: Foreman <foreman@localhost>"
 MAX_SCAN_BYTES = 1_000_000
 
 
@@ -23,6 +27,7 @@ class Change:
 class GitRepo:
     def __init__(self, path: Path):
         self.path = Path(path)
+        self.guard = "foreman/"  # reset_hard only runs on a branch whose name starts with this
 
     @classmethod
     def init(cls, path: Path) -> "GitRepo":
@@ -30,13 +35,22 @@ class GitRepo:
         path.mkdir(parents=True, exist_ok=True)
         repo = cls(path)
         repo.git("init", "-q", "-b", "main")
-        repo.git("commit", "-q", "--allow-empty", "-m", "initial commit")
+        repo.commit("chore: initial commit")
         return repo
 
+    @cached_property
+    def developer(self) -> bool:
+        """Does git have a user.name and user.email for this repo? Read once per GitRepo."""
+        def configured(key: str) -> bool:
+            p = subprocess.run(["git", "config", key], cwd=self.path, capture_output=True, encoding="utf-8", check=False)
+            return bool(p.stdout.strip())
+        return configured("user.name") and configured("user.email")
+
     def git(self, *args: str, check: bool = True) -> str:
+        identity = {} if self.developer else FOREMAN_IDENTITY
         p = subprocess.run(
-            ["git", *args], cwd=self.path, env={**os.environ, **IDENTITY},
-            capture_output=True, encoding="utf-8", errors="replace",
+            ["git", *args], cwd=self.path, env={**identity, **os.environ},
+            capture_output=True, encoding="utf-8", errors="replace", check=False,
         )
         if check and p.returncode:
             raise RepoError(f"git {' '.join(args)}: {p.stderr.strip()}")
@@ -53,8 +67,20 @@ class GitRepo:
             raise RepoError("target repo has a dirty working tree; commit or stash first")
         if self.git("rev-parse", "--verify", "--quiet", f"refs/heads/{branch}", check=False).strip():
             raise RepoError(f"branch {branch} already exists")
-        self.git("checkout", "-q", "-b", branch, start_ref)
+        self.git("checkout", "-q", "--no-track", "-b", branch, start_ref)
         return self.head()
+
+    def remote_branches(self) -> list[str]:
+        """Branch names on origin."""
+        out = self.git("ls-remote", "--heads", "origin")
+        return sorted(line.split("\trefs/heads/", 1)[1] for line in out.splitlines() if "\trefs/heads/" in line)
+
+    def remote_default(self) -> str | None:
+        """The branch origin's HEAD points at, if origin reports one."""
+        first = self.git("ls-remote", "--symref", "origin", "HEAD").splitlines()[:1]
+        if first and first[0].startswith("ref: refs/heads/"):
+            return first[0].split("refs/heads/", 1)[1].split("\t")[0]
+        return None
 
     def changes(self) -> list[Change]:
         parts = self.git("status", "--porcelain=v1", "-z", "-uall").split("\0")
@@ -105,13 +131,15 @@ class GitRepo:
         return "\n".join(ln[1:] for ln in diff.splitlines() if ln.startswith("+") and not ln.startswith("+++"))
 
     def commit(self, message: str) -> str:
+        if self.developer:
+            message = f"{message.rstrip()}\n\n{CO_AUTHOR}"
         self.git("add", "-A")
         self.git("commit", "-q", "--allow-empty", "-m", message)
         return self.head()
 
     def reset_hard(self, sha: str | None = None) -> None:
-        if not self.branch().startswith("foreman/"):
-            raise RepoError("refusing to reset: not on a foreman/ branch")
+        if not self.branch().startswith(self.guard):
+            raise RepoError(f"refusing to reset: not on a {self.guard} branch")
         self.git("reset", "-q", "--hard", sha or "HEAD")
         self.git("clean", "-fdq")
 

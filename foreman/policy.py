@@ -35,14 +35,18 @@ def _any(path: str, patterns: list[str]) -> bool:
     return any(glob_match(path, p) for p in patterns)
 
 
+def find_secrets(text: str) -> list[str]:
+    """Names of the secret patterns that match `text`."""
+    return [name for name, pattern in SECRET_PATTERNS.items() if re.search(pattern, text)]
+
+
 def check_changes(changes: list[Change], added_text: str, writable: list[str], target: Target) -> list[Finding]:
     findings = []
     for c in changes:
         if not _any(c.path, writable):
             findings.append(Finding("path", f"{c.path} is outside the agent's writable paths", True))
-    for name, pattern in SECRET_PATTERNS.items():
-        if re.search(pattern, added_text):
-            findings.append(Finding("secret", f"secret ({name}) detected in added content", True))
+    for name in find_secrets(added_text):
+        findings.append(Finding("secret", f"secret ({name}) detected in added content", True))
     for c in changes:
         if _any(c.path, target.dependency_manifests):
             findings.append(Finding("dependency", f"dependency manifest changed: {c.path}", False))

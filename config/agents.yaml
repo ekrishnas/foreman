@@ -92,3 +92,9 @@ agents:
     tools: [Read]
     writable: []
     context: [log_sample, metrics, slo]
+
+  committer:
+    tier: small
+    tools: [Read]
+    writable: []
+    context: [commit_stage, commit_diff, "issue_title?"]

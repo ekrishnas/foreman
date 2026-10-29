@@ -21,7 +21,7 @@ def run_id_of(out):
 def test_run_in_fake_mode_reports_status_pr_and_cost(tmp_path, capsys):
     code, out = cli(tmp_path, capsys, "run", str(SCENARIOS / "greenfield.yaml"), "--mode", "fake")
     assert code == 0, out
-    assert "status: completed" in out and "PR: #2" in out and "cost: $0.52" in out
+    assert "status: completed" in out and "PR: #2" in out and "cost: $0.57" in out
     assert "expect: ok" in out
 
 
@@ -63,7 +63,7 @@ def test_cost_for_an_issue_sums_every_run_against_it(tmp_path, capsys):
     cli(tmp_path, capsys, "run", str(SCENARIOS / "greenfield.yaml"), "--mode", "fake")
     cli(tmp_path, capsys, "run", str(SCENARIOS / "greenfield.yaml"), "--mode", "fake")
     code, out = cli(tmp_path, capsys, "cost", "--issue", "1")
-    assert code == 0 and "2 runs" in out and "total: $1.04" in out
+    assert code == 0 and "2 runs" in out and "total: $1.14" in out
 
 
 def test_resume_without_a_durable_store_explains_how_to_get_one(tmp_path, capsys, monkeypatch):
@@ -90,7 +90,7 @@ def test_record_then_replay_reproduces_the_run_without_a_fake_worker(tmp_path, c
     recorded = tmp_path / run_id_of(out) / "recorded"
     assert list(recorded.glob("*.json"))
     code, out = cli(tmp_path, capsys, "run", str(scenario), "--mode", "replay", "--recording", str(recorded))
-    assert code == 0 and "status: completed" in out and "cost: $0.52" in out
+    assert code == 0 and "status: completed" in out and "cost: $0.57" in out
 
 
 def test_replay_requires_a_recording(tmp_path, capsys):

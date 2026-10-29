@@ -39,9 +39,10 @@ class GitHub:
 
     auto_merge = False  # a human merges on GitHub; Foreman only waits
 
-    def __init__(self, repo: GitRepo, runner: Callable = sh):
+    def __init__(self, repo: GitRepo, runner: Callable = sh, base: str = "main"):
         self.repo = repo
         self.runner = runner
+        self.base = base  # the branch pull requests target
 
     def _gh(self, *args: str, input: str | None = None) -> str:
         r = self.runner(["gh", *args], cwd=self.repo.path, input=input)
@@ -85,7 +86,7 @@ class GitHub:
 
     def open_pr(self, branch: str, title: str, body: str, labels: list[str], closes: int | None) -> int:
         flags = self._ensure_labels(labels)
-        out = self._gh("pr", "create", "--head", branch, "--base", "main", "--title", title,
+        out = self._gh("pr", "create", "--head", branch, "--base", self.base, "--title", title,
                        "--body", _pr_body(body, closes), *flags)
         return int(out.strip().rsplit("/", 1)[1])
 
@@ -99,9 +100,9 @@ class GitHub:
         st = self.pr_state(pr)
         if st.state != "merged":
             raise RuntimeError(f"PR #{pr} is not merged")
-        self.repo.git("fetch", "-q", "origin", "main")
-        self.repo.git("checkout", "-q", "main")
-        self.repo.git("merge", "-q", "--ff-only", "origin/main")
+        self.repo.git("fetch", "-q", "origin", self.base)
+        self.repo.git("checkout", "-q", self.base)
+        self.repo.git("merge", "-q", "--ff-only", f"origin/{self.base}")
         return st.merge_sha
 
 

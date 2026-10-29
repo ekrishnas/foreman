@@ -18,6 +18,21 @@ MODELS = {"small": "claude-haiku-5-5", "mid": "claude-sonnet-5-5", "strong": "cl
 
 
 @pytest.fixture
+def git_config(tmp_path, monkeypatch):
+    """A private, empty global git config: the machine's own identity never leaks into a test.
+
+    Write [user] settings into the returned file before creating a repo to give it a developer identity.
+    """
+    cfg = tmp_path / "gitconfig"
+    cfg.write_text("", encoding="utf-8")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(cfg))
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    for var in ("GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"):
+        monkeypatch.delenv(var, raising=False)
+    return cfg
+
+
+@pytest.fixture
 def repo(tmp_path):
     return GitRepo.init(tmp_path / "target")
 

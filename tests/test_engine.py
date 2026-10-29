@@ -1,7 +1,16 @@
+import json
 from dataclasses import replace
 
-from foreman.config import load_target
-from foreman.engine import prepare_live_target
+from langgraph.checkpoint.memory import MemorySaver
+
+from foreman.branching import Branching
+from foreman.config import Scenario, load_scenario, load_target
+from foreman.engine import (
+    branch_point,
+    open_session,
+    prepare_live_target,
+    resume_session,
+)
 from foreman.gitops import GitRepo
 from tests.conftest import ROOT
 
@@ -55,3 +64,27 @@ def test_an_existing_local_repo_without_a_remote_gets_its_github_repo(tmp_path):
 
     prepare_live_target(target_at(existing.path), make_gh)
     assert gh.created == ["octo/url-shortener"]
+
+
+# ---- branching ----
+
+def test_live_runs_start_from_the_confirmed_base_on_origin_unless_the_scenario_names_a_ref():
+    main_scenario, tagged = Scenario("s", "feature", "x", "t"), Scenario("s", "feature", "x", "t", start_ref="v1")
+    assert branch_point(main_scenario, "live", Branching("develop", "feature/")) == "origin/develop"
+    assert branch_point(tagged, "live", Branching("develop", "feature/")) == "v1"
+    assert branch_point(main_scenario, "fake", Branching("develop", "feature/")) == "main"
+
+
+def test_the_confirmed_branching_names_the_run_branch_and_is_saved_for_resume(tmp_path):
+    scenario = load_scenario(ROOT / "scenarios/greenfield.yaml")
+    session = open_session(scenario, "fake", tmp_path / "runs", run_id="t1", branching=Branching("main", "feature/"))
+    assert session.run.repo.branch() == "feature/t1"
+    saved = json.loads((tmp_path / "runs/t1/run.json").read_text(encoding="utf-8"))
+    assert saved["branching"] == {"base": "main", "prefix": "feature/"}
+    assert session.start().status == "completed"          # the reset guard and PR flow accept the custom prefix
+
+
+def test_resume_reuses_the_saved_branching_instead_of_asking_again(tmp_path):
+    scenario = load_scenario(ROOT / "scenarios/greenfield.yaml")
+    open_session(scenario, "fake", tmp_path / "runs", run_id="t1", branching=Branching("main", "feature/"))
+    assert resume_session("t1", tmp_path / "runs", MemorySaver()).run.branching == Branching("main", "feature/")

@@ -1,6 +1,7 @@
 """Deterministic stand-ins for each agent. Like a real agent they read their prompt and write files."""
 import re
 
+from foreman.commits import fallback
 from foreman.fake import behavior
 from foreman.fake_target import SHORTENER, SHORTENER_REGRESSED, TESTS
 
@@ -271,3 +272,11 @@ def observer(req, fault):
     return (f"## Anomalies\n- The smoke run breached the SLO: {metrics}\n\n"
             "## Probable causes\n- Probable cause: a latency regression on the resolve path.\n\n"
             "## Suggested next step\n- Keep the revert PR ready and reproduce under load.")
+
+
+@behavior("committer")
+def committer(req, fault):
+    stage = prompt_section(req.prompt, "commit_stage")
+    files = re.findall(r"^\+\+\+ b/(.+)$", prompt_section(req.prompt, "commit_diff"), re.M)
+    bullets = [f"- update {path}"[:72] for path in files[:5]]
+    return "\n".join([fallback(stage), "", f"Record the output of the {stage} stage.", "", *bullets])

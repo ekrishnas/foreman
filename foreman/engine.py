@@ -10,6 +10,7 @@ from pathlib import Path
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
 
+from foreman.branching import Branching, choose
 from foreman.config import Scenario, load_agents, load_target
 from foreman.fake import FakeWorker
 from foreman.fake_target import make_fake_target
@@ -78,8 +79,14 @@ def prepare_live_target(target, make_github=GitHub) -> GitRepo:
     return repo
 
 
+def branch_point(scenario: Scenario, mode: str, branching: Branching) -> str:
+    """Where the run branch starts: the confirmed base on origin for live runs, else the scenario's own ref."""
+    return f"origin/{branching.base}" if mode == "live" and scenario.start_ref == "main" else scenario.start_ref
+
+
 def make_run(scenario: Scenario, mode: str, runs_dir: Path, run_id: str | None = None, store=None,
-             recording: Path | None = None, issue: int | None = None, record: bool = False) -> Run:
+             recording: Path | None = None, issue: int | None = None, record: bool = False,
+             branching: Branching | None = None) -> Run:
     if mode not in MODES:
         raise ValueError(f"mode must be one of {MODES}")
     run_id = run_id or new_run_id()
@@ -87,6 +94,7 @@ def make_run(scenario: Scenario, mode: str, runs_dir: Path, run_id: str | None =
     agents, models = load_agents(ROOT / "config/agents.yaml")
     use_fake_target = mode == "fake" or scenario.target == "fake"
     target = load_target(ROOT / "targets" / f"{'fake' if use_fake_target else scenario.target}.yaml")
+    human = ScriptedHuman(scenario.script) if scenario.approvals == "scripted" else TerminalHuman()
 
     if use_fake_target:
         target_dir = runs_dir / run_id / "target"
@@ -94,18 +102,19 @@ def make_run(scenario: Scenario, mode: str, runs_dir: Path, run_id: str | None =
         target = replace(target, repo=repo.path)
     elif mode == "live":
         repo = prepare_live_target(target)
+        branching = branching or choose(repo, human)  # fails fast, before an issue is filed or any model is paid for
     else:
         repo = GitRepo(target.repo)
+    branching = branching or Branching()
 
     if mode == "live":
-        github, worker, spec = GitHub(repo), ClaudeCodeWorker(), SpecAdapter(["openspec"], repo.path)
+        github, worker, spec = GitHub(repo, base=branching.base), ClaudeCodeWorker(), SpecAdapter(["openspec"], repo.path)
     else:
         github = FakeGitHub(runs_dir / run_id / "github", repo)
         worker = ReplayWorker(recording) if mode == "replay" else FakeWorker(scenario.faults)
         spec = SpecAdapter(FAKE_OPENSPEC, repo.path)
     recorder = Recorder(runs_dir / run_id / "recorded") if mode == "live" or record else None
 
-    human = ScriptedHuman(scenario.script) if scenario.approvals == "scripted" else TerminalHuman()
     if issue is not None:
         pass  # resuming: the issue already exists
     elif isinstance(scenario.input, int):
@@ -123,12 +132,14 @@ def make_run(scenario: Scenario, mode: str, runs_dir: Path, run_id: str | None =
             if f.get("stage") == "observe":
                 deploy_env |= effects.get(f["kind"], {})
 
-    return Run(
-        deploy_env=deploy_env, check_health=not use_fake_target,
+    run = Run(
+        deploy_env=deploy_env, check_health=not use_fake_target, branching=branching,
         run_id=run_id, issue_id=issue, scenario=scenario, target=target, agents=agents, models=models,
         repo=repo, worker=worker, store=store or MemoryStore(runs_dir=runs_dir), github=github,
         human=human, spec=spec, runs_dir=runs_dir, recorder=recorder,
     )
+    run.repo.guard = run.branch  # reset_hard may only touch this run's branch
+    return run
 
 
 @dataclass
@@ -148,13 +159,15 @@ class Session:
 
 
 def open_session(scenario: Scenario, mode: str, runs_dir: Path, checkpointer=None, run_id: str | None = None,
-                 store=None, recording: Path | None = None, record: bool = False) -> Session:
-    run = make_run(scenario, mode, runs_dir, run_id, store, recording, record=record)
-    run.repo.start_run(run.branch, scenario.start_ref)
+                 store=None, recording: Path | None = None, record: bool = False,
+                 branching: Branching | None = None) -> Session:
+    run = make_run(scenario, mode, runs_dir, run_id, store, recording, record=record, branching=branching)
+    run.repo.start_run(run.branch, branch_point(scenario, mode, run.branching))
     run.dir.mkdir(parents=True, exist_ok=True)
     (run.dir / "run.json").write_text(json.dumps({
         "run_id": run.run_id, "mode": mode, "issue": run.issue_id, "scenario": asdict(scenario),
-        "recording": str(recording) if recording else None, "record": record}, indent=1), encoding="utf-8", newline="\n")
+        "recording": str(recording) if recording else None, "record": record,
+        "branching": asdict(run.branching)}, indent=1), encoding="utf-8", newline="\n")
     return build_session(run, checkpointer)
 
 
@@ -162,7 +175,8 @@ def resume_session(run_id: str, runs_dir: Path, checkpointer, store=None) -> Ses
     """Rebuild a run from its saved metadata; the checkpointer supplies the graph state."""
     meta = json.loads((Path(runs_dir) / run_id / "run.json").read_text(encoding="utf-8"))
     run = make_run(Scenario(**meta["scenario"]), meta["mode"], runs_dir, run_id, store,
-                   Path(meta["recording"]) if meta["recording"] else None, issue=meta["issue"], record=meta["record"])
+                   Path(meta["recording"]) if meta["recording"] else None, issue=meta["issue"], record=meta["record"],
+                   branching=Branching(**meta.get("branching", {})))  # runs saved before branching existed use the defaults
     return build_session(run, checkpointer)
 
 

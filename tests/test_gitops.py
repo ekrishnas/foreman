@@ -1,12 +1,39 @@
 import pytest
 
-from foreman.gitops import Change, RepoError
+from foreman.gitops import Change, GitRepo, RepoError
+
+DEVELOPER = "[user]\n\tname = Dev Eloper\n\temail = dev@example.com\n"
 
 
 def write(repo, rel, text):
     p = repo.path / rel
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(text)
+
+
+def test_commits_are_authored_by_the_developer_with_foreman_as_co_author(tmp_path, git_config):
+    git_config.write_text(DEVELOPER, encoding="utf-8")
+    repo = GitRepo.init(tmp_path / "r")
+    write(repo, "a.txt", "a")
+    repo.commit("feat: add a")
+    assert repo.git("log", "-1", "--format=%an <%ae>|%cn <%ce>").strip() == "Dev Eloper <dev@example.com>|Dev Eloper <dev@example.com>"
+    message = repo.git("log", "-1", "--format=%B")
+    assert message.startswith("feat: add a\n\n") and message.strip().endswith("Co-Authored-By: Foreman <foreman@localhost>")
+
+
+def test_the_initial_commit_follows_the_same_rule(tmp_path, git_config):
+    git_config.write_text(DEVELOPER, encoding="utf-8")
+    repo = GitRepo.init(tmp_path / "r")
+    assert repo.git("log", "-1", "--format=%an").strip() == "Dev Eloper"
+    assert "Co-Authored-By: Foreman" in repo.git("log", "-1", "--format=%B")
+
+
+def test_foreman_authors_only_when_git_has_no_identity(tmp_path, git_config):
+    repo = GitRepo.init(tmp_path / "r")
+    write(repo, "a.txt", "a")
+    repo.commit("feat: add a")
+    assert repo.git("log", "-1", "--format=%an <%ae>").strip() == "Foreman <foreman@localhost>"
+    assert "Co-Authored-By" not in repo.git("log", "-1", "--format=%B")
 
 
 def test_init_creates_main_with_initial_commit(repo):
@@ -138,3 +165,25 @@ def test_snapshot_and_restore_round_trip(repo):
     repo.restore(snap)
     assert (repo.path / "a.txt").read_text() == "edited"
     assert (repo.path / "n/b.txt").read_text() == "new"
+
+
+def test_reset_hard_only_runs_on_the_run_branch_whatever_its_prefix(repo):
+    repo.guard = "feature/r1"
+    repo.start_run("feature/r1", "main")
+    write(repo, "x.txt", "dirty")
+    repo.reset_hard()
+    assert repo.changes() == []
+    repo.git("checkout", "-q", "-b", "feature/someone-elses-work", "main")
+    with pytest.raises(RepoError, match="refusing to reset"):
+        repo.reset_hard()
+
+
+def test_a_run_branch_started_from_a_remote_branch_does_not_track_it(tmp_path, repo):
+    import subprocess
+    origin = tmp_path / "origin.git"
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(origin)], check=True)
+    repo.git("remote", "add", "origin", str(origin))
+    repo.git("push", "-q", "origin", "main")
+    repo.git("fetch", "-q", "origin", "main")
+    repo.start_run("foreman/r1", "origin/main")
+    assert repo.git("config", "--get", "branch.foreman/r1.merge", check=False).strip() == ""

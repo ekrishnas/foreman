@@ -75,15 +75,17 @@ def verdict(metrics: dict, slo: dict) -> tuple[bool, str]:
 
 
 def open_revert_pr(run: Run, ctx: dict, reason: str, summary: str) -> int:
-    sha, branch = ctx["merge_sha"], f"foreman/revert-{run.run_id}"
+    sha, branch = ctx["merge_sha"], f"{run.branching.prefix}revert-{run.run_id}"
     is_merge_commit = len(run.repo.git("rev-list", "--parents", "-n", "1", sha).split()) > 2
-    run.repo.git("checkout", "-q", "-b", branch, "main")
-    run.repo.git("revert", "--no-edit", *(["-m", "1"] if is_merge_commit else []), sha)
+    run.repo.git("checkout", "-q", "-b", branch, run.base)
+    run.repo.git("revert", "--no-commit", *(["-m", "1"] if is_merge_commit else []), sha)
+    run.repo.commit(f"fix: revert PR #{ctx['pr_number']} after observe failed\n\n"
+                    f"The observe stage failed for run {run.run_id}.\n\nReverts {sha}.")
     run.github.push(branch)
     body = (f"Automatic revert of PR #{ctx['pr_number']} (issue #{run.issue_id}) after the observe stage failed.\n\n"
             f"**Verdict:** {reason}\n\n{summary}\n")
     pr = run.github.open_pr(branch, f"Revert: {ctx['issue_title']}", body, ["foreman:revert"], closes=None)
-    run.repo.git("checkout", "-q", "main")
+    run.repo.git("checkout", "-q", run.base)
     return pr
 
 

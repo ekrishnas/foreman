@@ -1,5 +1,6 @@
 import json
 
+from foreman.commits import lint
 from foreman.config import Scenario
 from foreman.engine import open_session
 from tests.conftest import ROOT
@@ -120,7 +121,7 @@ def test_run_branch_and_stage_commits(tmp_path):
     s = session_for(tmp_path)
     s.start()
     log = s.run.repo.git("log", "--format=%s", "main").splitlines()
-    assert "foreman: proposal" in log and "foreman: implement" in log and "foreman: archive_spec" in log
+    assert "docs: propose the change" in log and "feat: implement the change" in log and "docs: archive the change spec" in log
     assert s.run.repo.git("branch", "--list", "foreman/t1").strip().endswith("foreman/t1")
 
 
@@ -137,3 +138,17 @@ def test_a_tag_that_already_points_elsewhere_stops_the_run_instead_of_moving_it(
     s.run.repo.git("tag", "v1")            # an earlier release already owns the tag
     result = s.start()
     assert result.status == "safe_stopped" and "v1" in result.reason
+
+
+def test_every_commit_of_a_run_is_conventional_authored_by_the_developer_and_co_authored_by_foreman(tmp_path, git_config):
+    git_config.write_text("[user]\n\tname = Dev Eloper\n\temail = dev@example.com\n", encoding="utf-8")
+    s = session_for(tmp_path)
+    assert s.start().status == "completed"
+    shas = s.run.repo.git("rev-list", "--no-merges", "main").split()
+    assert len(shas) >= 5                                      # fixture history plus the stage commits
+    for sha in shas:
+        author, message = s.run.repo.git("log", "-1", "--format=%an|%B", sha).split("|", 1)
+        subject_and_body, trailer = message.strip().rsplit("\n\n", 1)
+        assert author == "Dev Eloper", message
+        assert trailer == "Co-Authored-By: Foreman <foreman@localhost>", message
+        assert lint(subject_and_body) == [], message
