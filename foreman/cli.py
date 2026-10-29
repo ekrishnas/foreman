@@ -5,6 +5,8 @@
     foreman respond 7 --approve                  answer one
     foreman resume RUN_ID                        continue a safe-stopped or crashed run
     foreman logs [RUN_ID] [--problems] [--cost]  what happened: list runs, or one run's timeline
+    foreman update                               bring this Foreman checkout up to date with origin/main
+    foreman doctor [--repo DIR] [--install-skill]  is this product's skill copy and profile current?
 """
 import argparse
 import getpass
@@ -14,7 +16,8 @@ from pathlib import Path
 
 from foreman import ROOT
 from foreman.adapters.gitops import RepoError
-from foreman.core.config import RunConfig
+from foreman.adapters.updater import install_skill, profile_hints, skill_status, update_foreman
+from foreman.core.config import PROFILE, RunConfig
 from foreman.engine import DB_NAME, RunRefused, make_checkpointer, make_run, open_session, resume_session
 from foreman.state.store import Store
 
@@ -147,6 +150,36 @@ def cmd_logs(args) -> int:
     return 0
 
 
+def cmd_update(args) -> int:
+    """Fast-forward this Foreman checkout. It runs the old code, so `foreman doctor` (new code) reports the rest."""
+    result = update_foreman(ROOT)
+    if result.before == result.after:
+        print(f"foreman: up to date at {result.after[:7]}")
+    else:
+        print(f"foreman: updated {result.before[:7]}..{result.after[:7]} ({len(result.commits)} commits)")
+        for line in result.commits:
+            print(f"  {line}")
+    print(f"deps: changed (run `uv sync` in {ROOT})" if result.deps_changed else "deps: unchanged")
+    return 0
+
+
+def cmd_doctor(args) -> int:
+    """Is this product's copy of the skill current, and does its profile know the newest settings?"""
+    product = Path(args.repo).resolve()
+    if args.install_skill:
+        print(f"skill: installed at {install_skill(product)} (commit it: it is part of the product's setup)")
+    else:
+        status = skill_status(product)
+        print(f"skill: {status}" + ("" if status == "current" else "  (`foreman doctor --install-skill` copies the latest)"))
+    if hints := profile_hints(product):
+        print("profile: you do not have these settings yet (see examples/target.yaml):")
+        for hint in hints:
+            print(f"  {hint}")
+    else:
+        print("profile: up to date" if (product / PROFILE).is_file() else "profile: none yet (the /foreman skill creates it)")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--runs-dir", default=str(ROOT / "runs"), help="where run files and the SQLite database live")
@@ -185,6 +218,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--problems", action="store_true", help="only failed attempts, retries, stops and rollbacks")
     p.add_argument("--cost", action="store_true", help="also show what each agent call cost")
     p.set_defaults(func=cmd_logs)
+
+    p = sub.add_parser("update", help="bring this Foreman checkout up to date with origin/main")
+    p.set_defaults(func=cmd_update)
+
+    p = sub.add_parser("doctor", help="check a product's copy of the skill and its profile against this Foreman")
+    p.add_argument("--repo", default=".", help="the product repo (default: the current folder)")
+    p.add_argument("--install-skill", action="store_true", help="copy this Foreman's skill into the product")
+    p.set_defaults(func=cmd_doctor)
     return parser
 
 

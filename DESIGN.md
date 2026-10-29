@@ -34,6 +34,8 @@ The front door is a Claude Code skill (`.claude/skills/foreman/SKILL.md` in the 
 5. installs the toolchain the product needs, with permission: the version the repo targets if it has code (read from `global.json`, `<TargetFramework>`, `.nvmrc`, `go.mod` and similar), otherwise the version the developer chose, through the system package manager or Microsoft's official script; it also checks Docker when the tests need it;
 6. makes sure `.gitignore` covers build output and `logs/`, and commits the setup files (with permission), because a run will not start from a dirty working tree.
 
+`/foreman update` keeps all of this current: it fast-forwards the Foreman checkout (`foreman update`, which never discards local edits or unpushed commits), runs `uv sync` if the dependencies changed, replaces the product's copy of the skill and offers newer profile settings (`foreman doctor`), each with the developer's permission.
+
 On every use it then starts the run, relays questions, and reports. Claude never does engineering work and never answers on the developer's behalf. The same commands work from any terminal.
 
 ## 3. Workflows at a glance

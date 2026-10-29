@@ -1,7 +1,7 @@
 ---
 name: foreman
 description: Hand a GitHub issue to Foreman, a governed orchestrator that classifies the work, runs the matching workflow (new implementation, change to existing code, bugfix, test improvement, doc improvement, spike, or a post-deploy log check) and opens a pull request. Use only when the developer types /foreman.
-argument-hint: setup | work on #1 | fix #3 | #1 is deployed, check the logs | or describe the work (you can @-attach a file)
+argument-hint: setup | update | work on #1 | fix #3 | #1 is deployed, check the logs | or describe the work (you can @-attach a file)
 disable-model-invocation: true
 allowed-tools: Bash(uv run:*), Bash(git status:*), Bash(git remote:*), Bash(git rev-parse:*), Bash(gh auth status:*), Bash(openspec --version:*)
 ---
@@ -11,6 +11,8 @@ allowed-tools: Bash(uv run:*), Bash(git status:*), Bash(git remote:*), Bash(git 
 You are the front door to **Foreman**. Foreman is a separate tool (its own repository) that turns a GitHub issue into a reviewed pull request, using agents inside strict boundaries. It works on the product repository you are standing in. Your job: get everything Foreman needs in place, start it, pass its questions to the developer, and report. You never do the engineering work yourself.
 
 The developer said: **$ARGUMENTS**
+
+**Update only.** If the developer asked to update Foreman (`/foreman update`, "update foreman", "get the latest"), do steps 1 and 2, then the section **Updating Foreman** near the end, and **stop**. Do not start a run.
 
 **Setup only.** If the developer asked only for setup (`/foreman setup`, a request to set Foreman up, or no issue to work on), do steps 1 to 6 and then **stop**: tell them in two or three lines what is ready, and that they start work with `/foreman work on #<issue number>`. Do not start a run.
 
@@ -207,6 +209,18 @@ When the run ends, read its output and tell the developer, briefly:
 - **cost** of the run and of the issue;
 - for a log check: the verdict (`working`, `failing`, `inconclusive`), the evidence, and the log file that was used (the `reason:` line);
 - for `safe_stopped`: the reason in plain words (run `foreman logs <run id> --problems` to see which stage failed and how many times, and say what you find), and offer `foreman resume <run id>` once they have dealt with it (for example raised `budget_usd` in `FOREMAN/runs/<run id>/run.json`, or merged the pull request).
+
+## Updating Foreman (`/foreman update`)
+
+Do steps 1 and 2 (find the product and the Foreman folder), then:
+
+1. **Update the checkout.** Run `foreman update`. It fast-forwards `FOREMAN` to `origin/main` and prints `foreman: updated <old>..<new>` with the subject of every new commit, or `foreman: up to date`. It refuses, and changes nothing, when Foreman has local edits, commits that are not on `origin/main`, or is not on `main`: read its message to the developer in plain words and let them decide. Never reset, stash, force or rebase Foreman yourself.
+2. **Dependencies.** If it printed `deps: changed`, say so and run `uv sync` in `FOREMAN` (ask first if it will download Python or large packages).
+3. **Check the product.** Run `foreman doctor --repo "PRODUCT"`. This is the new version's code, so it knows the newest settings. It prints:
+   - `skill: current | differs | not installed`. If `differs`, tell the developer the product's copy of this skill is out of date and ask permission to replace it; on yes run `foreman doctor --repo "PRODUCT" --install-skill`. The new skill applies from the next `/foreman`; this conversation still follows the old text. If `not installed`, they probably use a personal copy: leave it.
+   - `profile: ...` lists settings that `.foreman/target.yaml` does not have yet, each with what it does. Explain each in a line and ask which to add: recommend `paths.ci` and `paths.ignore` when stories need CI workflows or snapshot tests, and `requires: [docker]` only if the tests need Docker (otherwise `requires: []`, which also stops the question coming back). Edit the profile only after they confirm, and keep its comments.
+4. **Commit.** Changed setup files (the skill copy, `.foreman/target.yaml`) are committed as in step 6: with permission, on the current branch, not pushed ("Update Foreman skill and profile").
+5. **Report** in a few lines: the old and new version, what is new in plain words (group the commit subjects), what you changed in the product, and what is left for them.
 
 ## Never
 

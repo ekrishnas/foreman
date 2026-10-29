@@ -112,9 +112,15 @@ uv run foreman resume <id>                                      # continue a saf
 | `foreman pending [--run ID] [--wait SECONDS]` | list open questions. With `--wait`, block until there is one, the run finished, or time is up |
 | `foreman respond ID --approve \| --reject [--note TEXT] \| --answer TEXT [--who NAME]` | answer one question |
 | `foreman resume RUN_ID` | continue from the last checkpoint. If classification never finished, classify again |
+| `foreman update` | bring this Foreman checkout up to date with `origin/main` (a fast-forward). It refuses, and changes nothing, if Foreman has local edits, commits that are not on `origin/main`, or is not on `main`. Prints the new commits and whether `uv sync` is needed |
+| `foreman doctor [--repo PATH] [--install-skill]` | check a product against this Foreman: is its copy of the skill current, and does its `.foreman/target.yaml` have the newest settings? `--install-skill` copies the latest skill into the product |
 | `foreman logs [RUN_ID] [--problems] [--cost]` | what Foreman did. Without a run id: every run with its type, status and cost. With one: its timeline. `--problems` keeps only failed attempts, retries, stops and rollbacks; `--cost` adds what each agent call cost |
 
 All commands accept `--runs-dir` (default: `runs/` in the Foreman folder).
+
+### Keeping Foreman up to date
+
+In Claude Code, type `/foreman update`. It updates your Foreman checkout (and runs `uv sync` if the dependencies changed), tells you what is new, replaces the product's copy of the skill with the latest (with your permission), and offers any new profile settings, such as `paths.ci`, `paths.ignore` and `requires`. It never discards local edits or unpushed commits in the Foreman folder: it stops and says why. The first time, before the product's skill knows `update`, run `git pull` in the Foreman folder, then `uv run foreman doctor --repo <your product repo> --install-skill` to copy the latest skill in.
 
 ### When a run stops
 
@@ -234,6 +240,7 @@ Foreman keeps control of the sequence. Its agents know OpenSpec and use its help
 |---|---|
 | `github.py` | Everything GitHub, through `gh`: issues, comments, PRs, merge state, waiting for a merge, creating the repo with branch protection |
 | `gitops.py` | `GitRepo`: branch, commit, diff, reset, file tree, snapshot |
+| `updater.py` | `foreman update` (fast-forward the checkout, never discarding anything) and `foreman doctor` (the product's skill copy and profile against this Foreman) |
 | `specs.py` | The one place that calls the `openspec` CLI (validate, archive) |
 | `workers.py` | `ClaudeCodeWorker`: one `claude -p` subprocess per attempt with that agent's model and tools; parses its JSON for text, tokens and cost. Which environment variables `claude` may see, and which tools are always denied |
 
