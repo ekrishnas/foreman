@@ -8,7 +8,11 @@ from foreman.gitops import GitRepo
 from foreman.util import sh
 
 # Only what `claude` itself needs: no API keys, no GitHub token, nothing else.
-ENV_KEEP = ["HOME", "LANG", "LC_ALL", "TERM", "TMPDIR", "CLAUDE_CODE_OAUTH_TOKEN"]
+ENV_KEEP = [
+    "HOME", "LANG", "LC_ALL", "TERM", "TMPDIR", "CLAUDE_CODE_OAUTH_TOKEN",
+    # Windows needs these for the process to find its profile, temp dir and shell.
+    "USERPROFILE", "APPDATA", "LOCALAPPDATA", "SYSTEMROOT", "TEMP", "TMP", "HOMEDRIVE", "HOMEPATH", "PATHEXT", "COMSPEC",
+]
 DENIED_TOOLS = "WebFetch,WebSearch"
 
 
@@ -87,7 +91,7 @@ class Recorder:
 
     def save(self, key: str, result: WorkerResult, snapshot: dict) -> None:
         self.dir.mkdir(parents=True, exist_ok=True)
-        (self.dir / f"{key}.json").write_text(json.dumps({"result": asdict(result), "files": snapshot}, indent=1))
+        (self.dir / f"{key}.json").write_text(json.dumps({"result": asdict(result), "files": snapshot}, indent=1), encoding="utf-8", newline="\n")
 
 
 class ReplayWorker:
@@ -98,6 +102,6 @@ class ReplayWorker:
         path = self.dir / f"{req.key}.json"
         if not path.exists():
             return WorkerResult("", error=f"no recording for {req.key}")
-        data = json.loads(path.read_text())
+        data = json.loads(path.read_text(encoding="utf-8"))
         GitRepo(req.cwd).restore(data["files"])
         return WorkerResult(**data["result"])

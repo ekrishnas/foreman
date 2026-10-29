@@ -70,7 +70,7 @@ def gate_proposal(run: Run, ctx: dict, text: str) -> str | None:
     ok, out = run.spec.validate(ctx["change_id"])
     if not ok:
         return f"openspec validate --strict failed:\n{out}"
-    design = (change_dir(run, ctx) / "design.md").read_text()
+    design = (change_dir(run, ctx) / "design.md").read_text(encoding="utf-8")
     if not section(design, "API contract"):
         return "design.md must contain an '## API contract' section"
     return None
@@ -78,13 +78,13 @@ def gate_proposal(run: Run, ctx: dict, text: str) -> str | None:
 
 def after_proposal(run: Run, ctx: dict, text: str) -> dict:
     d = change_dir(run, ctx)
-    design = (d / "design.md").read_text()
+    design = (d / "design.md").read_text(encoding="utf-8")
     return {
         "design": design,
-        "tasks": (d / "tasks.md").read_text(),
+        "tasks": (d / "tasks.md").read_text(encoding="utf-8"),
         "contract": section(design, "API contract"),
-        "spec_scenarios": "\n\n".join(p.read_text() for p in sorted((d / "specs").glob("*/spec.md"))),
-        "change_summary": (d / "proposal.md").read_text(),
+        "spec_scenarios": "\n\n".join(p.read_text(encoding="utf-8") for p in sorted((d / "specs").glob("*/spec.md"))),
+        "change_summary": (d / "proposal.md").read_text(encoding="utf-8"),
     }
 
 
@@ -106,10 +106,10 @@ def tick_tasks(run: Run, ctx: dict, text: str) -> dict:
     path = change_dir(run, ctx) / "tasks.md"
     ids = re.findall(r"^DONE:\s*([\w.]+)", text, re.M)
     if path.exists() and ids:
-        content = path.read_text()
+        content = path.read_text(encoding="utf-8")
         for task_id in ids:
             content = re.sub(rf"^(\s*- )\[ \]( {re.escape(task_id)}\b)", r"\1[x]\2", content, flags=re.M)
-        path.write_text(content)
+        path.write_text(content, encoding="utf-8", newline="\n")
     return {}
 
 
@@ -204,7 +204,7 @@ def validate_feature_checks(run: Run, ctx: dict, min_tests: int = 1) -> tuple[li
         results.append(f"tests: {n} passed")
 
     tasks_file = change_dir(run, ctx) / "tasks.md"
-    text = tasks_file.read_text() if tasks_file.exists() else ""
+    text = tasks_file.read_text(encoding="utf-8") if tasks_file.exists() else ""
     open_tasks = re.findall(r"^\s*- \[ \]\s+(\S+)", text, re.M)
     total = len(open_tasks) + len(re.findall(r"^\s*- \[x\]", text, re.M | re.I))
     results.append(f"tasks: {total - len(open_tasks)}/{total}")
@@ -335,7 +335,7 @@ def bugfix_intake(run: Run):
 
 
 def spec_deltas(run: Run, ctx: dict) -> str:
-    return "\n\n".join(p.read_text() for p in sorted((change_dir(run, ctx) / "specs").glob("*/spec.md")))
+    return "\n\n".join(p.read_text(encoding="utf-8") for p in sorted((change_dir(run, ctx) / "specs").glob("*/spec.md")))
 
 
 def gate_triage(run: Run, ctx: dict, text: str) -> str | None:
@@ -349,9 +349,9 @@ def gate_triage(run: Run, ctx: dict, text: str) -> str | None:
 
 def after_triage(run: Run, ctx: dict, text: str) -> dict:
     d = change_dir(run, ctx)
-    proposal, design = (d / "proposal.md").read_text(), (d / "design.md").read_text()
+    proposal, design = (d / "proposal.md").read_text(encoding="utf-8"), (d / "design.md").read_text(encoding="utf-8")
     return {"triage": "\n\n".join([proposal, design, spec_deltas(run, ctx)]), "design": design,
-            "tasks": (d / "tasks.md").read_text(), "change_summary": proposal}
+            "tasks": (d / "tasks.md").read_text(encoding="utf-8"), "change_summary": proposal}
 
 
 def gate_reproduce(run: Run, ctx: dict, text: str) -> str | None:
@@ -380,7 +380,7 @@ def gate_rca(run: Run, ctx: dict, text: str) -> str | None:
     path = run.repo.path / f"docs/rca/{ctx['issue_number']}.md"
     if not path.exists():
         return f"docs/rca/{ctx['issue_number']}.md was not written"
-    missing = [h for h in RCA_SECTIONS if not section(path.read_text(), h)]
+    missing = [h for h in RCA_SECTIONS if not section(path.read_text(encoding="utf-8"), h)]
     return f"the RCA is missing sections: {', '.join(missing)}" if missing else None
 
 
@@ -459,11 +459,11 @@ def explore_notes_path(run: Run, ctx: dict) -> str:
 
 def gate_explore(run: Run, ctx: dict, text: str) -> str | None:
     path = run.repo.path / explore_notes_path(run, ctx)
-    return None if path.exists() and path.read_text().strip() else f"{explore_notes_path(run, ctx)} was not written"
+    return None if path.exists() and path.read_text(encoding="utf-8").strip() else f"{explore_notes_path(run, ctx)} was not written"
 
 
 def after_explore(run: Run, ctx: dict, text: str) -> dict:
-    return {f"notes::{ctx['option_id']}": (run.repo.path / explore_notes_path(run, ctx)).read_text()}
+    return {f"notes::{ctx['option_id']}": (run.repo.path / explore_notes_path(run, ctx)).read_text(encoding="utf-8")}
 
 
 def analysis_path(run: Run) -> str:
@@ -474,7 +474,7 @@ def gate_analysis(run: Run, ctx: dict, text: str) -> str | None:
     path = run.repo.path / analysis_path(run)
     if not path.exists():
         return f"{analysis_path(run)} was not written"
-    body = path.read_text()
+    body = path.read_text(encoding="utf-8")
     missing = [h for h in SPIKE_SECTIONS if not section(body, h)]
     if missing:
         return f"the analysis is missing sections: {', '.join(missing)}"
@@ -484,7 +484,7 @@ def gate_analysis(run: Run, ctx: dict, text: str) -> str | None:
 
 
 def after_analysis(run: Run, ctx: dict, text: str) -> dict:
-    body = (run.repo.path / analysis_path(run)).read_text()
+    body = (run.repo.path / analysis_path(run)).read_text(encoding="utf-8")
     return {"analysis_path": analysis_path(run), "draft_story": section(body, "Draft user story"),
             "pr_narrative": section(body, "Recommendation")}
 

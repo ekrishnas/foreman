@@ -23,7 +23,7 @@ def _target_profile(run, ctx):
 def _existing_specs(run, ctx):
     specs = sorted((run.repo.path / "openspec/specs").glob("*/spec.md"))
     return "\n\n".join(
-        f"### openspec/specs/{p.parent.name}/spec.md\n{p.read_text().strip()}" for p in specs
+        f"### openspec/specs/{p.parent.name}/spec.md\n{p.read_text(encoding="utf-8").strip()}" for p in specs
     ) or "(none yet)"
 
 
@@ -76,7 +76,7 @@ def build_prompt(run, agent: Agent, ctx: dict, failure: str | None = None, insta
     )
     boundaries.append("- No network or web access. Changes outside your writable paths are rejected.")
 
-    parts = [(run.prompts_dir / f"{agent.name}.md").read_text().strip(), "## Boundaries\n" + "\n".join(boundaries)]
+    parts = [(run.prompts_dir / f"{agent.name}.md").read_text(encoding="utf-8").strip(), "## Boundaries\n" + "\n".join(boundaries)]
     for key, required in agent.context_keys():
         value = ctx.get(key)
         if value is None and key in PROVIDERS:

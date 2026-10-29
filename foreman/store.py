@@ -41,7 +41,7 @@ def export_audit(runs_dir: Path | None, ev: AuditEvent) -> None:
         return
     path = Path(runs_dir) / ev.run_id / "audit.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a") as f:
+    with path.open("a", encoding="utf-8", newline="\n") as f:
         f.write(json.dumps(asdict(ev)) + "\n")
 
 
@@ -50,7 +50,7 @@ def export_cost(runs_dir: Path | None, ev: CostEvent) -> None:
         return
     path = Path(runs_dir) / ev.run_id / "cost.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a") as f:
+    with path.open("a", encoding="utf-8", newline="\n") as f:
         f.write(json.dumps(asdict(ev)) + "\n")
 
 
@@ -85,9 +85,9 @@ class FileStore(MemoryStore):
     def __init__(self, runs_dir: Path):
         super().__init__(runs_dir=None)
         for path in sorted(Path(runs_dir).glob("*/audit.jsonl")):
-            self._audit += [AuditEvent(**json.loads(line)) for line in path.read_text().splitlines() if line]
+            self._audit += [AuditEvent(**json.loads(line)) for line in path.read_text(encoding="utf-8").splitlines() if line]
         for path in sorted(Path(runs_dir).glob("*/cost.jsonl")):
-            self._cost += [CostEvent(**json.loads(line)) for line in path.read_text().splitlines() if line]
+            self._cost += [CostEvent(**json.loads(line)) for line in path.read_text(encoding="utf-8").splitlines() if line]
 
 
 SCHEMA_SQL = """

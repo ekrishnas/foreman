@@ -47,7 +47,7 @@ class Scenario:
 
 
 def _read(path: Path) -> dict:
-    return yaml.safe_load(Path(path).read_text())
+    return yaml.safe_load(Path(path).read_text(encoding="utf-8"))
 
 
 def load_agents(path: Path) -> tuple[dict[str, Agent], dict[str, str]]:

@@ -7,8 +7,8 @@ paths: { src: "src/**", tests: "tests/**", docs: "docs/**" }
 commands:
   build: python -m compileall -q src
   test: python -m pytest -q
-  run: "true"
-  stop: "true"
+  run: python -c "pass"
+  stop: python -c "pass"
   smoke: python scripts/smoke.py
 health_url: http://localhost:8080/health
 slo: { error_rate_max: 0.01, p95_ms_max: 200 }

@@ -10,6 +10,8 @@ A governed agentic SDLC orchestrator. Give it a work item (a GitHub issue) and i
 
 ## Quick start (offline, no accounts)
 
+Python is pinned to 3.13 (`.python-version`; `requires-python` is `>=3.12,<3.15`). Some dependencies (`zstandard`, `pyyaml`) have no wheels for Python 3.15 yet, so `uv` would try to compile them and ask for a C compiler. `uv` downloads 3.13 for you; no compiler is needed.
+
 ```bash
 uv sync
 uv run foreman run scenarios/greenfield.yaml     # fake mode: deterministic fake agents, local git, no network
@@ -17,6 +19,8 @@ uv run pytest -q                                 # the whole suite, also offline
 ```
 
 Fake mode builds a throwaway Python "url shortener" repo under `runs/<run-id>/target`, files the scenario's input as an issue in a local `FakeGitHub` (`runs/<run-id>/github/`), runs the real graph, runner, policy and gates against it, and merges the PR itself as the "human". The output ends with the run's status, PR number, cost and whether the scenario's `expect` block held.
+
+**Windows:** fake mode (`foreman run ...`) is written to run natively: the fake profile only calls `python`, and all file and process IO is explicit UTF-8. It has been checked by simulation (wheel resolution for Windows x64 and ARM64, an ASCII default-encoding run, no `os.killpg`), not on a real Windows machine. The test suite assumes a POSIX shell (`sleep`, `touch`, `#!` stub scripts); run `pytest` under WSL.
 
 ## Commands
 

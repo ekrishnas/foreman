@@ -49,11 +49,11 @@ def new_run_id() -> str:
 
 def issue_from_file(path: Path) -> tuple[str, str]:
     """Title is the first `# ` heading, body the rest."""
-    lines = path.read_text().splitlines()
+    lines = path.read_text(encoding="utf-8").splitlines()
     for i, line in enumerate(lines):
         if line.startswith("# "):
             return line[2:].strip(), "\n".join(lines[i + 1:]).strip()
-    return path.stem, path.read_text().strip()
+    return path.stem, path.read_text(encoding="utf-8").strip()
 
 
 def make_checkpointer(db_url: str | None = None):
@@ -154,13 +154,13 @@ def open_session(scenario: Scenario, mode: str, runs_dir: Path, checkpointer=Non
     run.dir.mkdir(parents=True, exist_ok=True)
     (run.dir / "run.json").write_text(json.dumps({
         "run_id": run.run_id, "mode": mode, "issue": run.issue_id, "scenario": asdict(scenario),
-        "recording": str(recording) if recording else None, "record": record}, indent=1))
+        "recording": str(recording) if recording else None, "record": record}, indent=1), encoding="utf-8", newline="\n")
     return build_session(run, checkpointer)
 
 
 def resume_session(run_id: str, runs_dir: Path, checkpointer, store=None) -> Session:
     """Rebuild a run from its saved metadata; the checkpointer supplies the graph state."""
-    meta = json.loads((Path(runs_dir) / run_id / "run.json").read_text())
+    meta = json.loads((Path(runs_dir) / run_id / "run.json").read_text(encoding="utf-8"))
     run = make_run(Scenario(**meta["scenario"]), meta["mode"], runs_dir, run_id, store,
                    Path(meta["recording"]) if meta["recording"] else None, issue=meta["issue"], record=meta["record"])
     return build_session(run, checkpointer)

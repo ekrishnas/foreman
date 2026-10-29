@@ -36,7 +36,7 @@ class GitRepo:
     def git(self, *args: str, check: bool = True) -> str:
         p = subprocess.run(
             ["git", *args], cwd=self.path, env={**os.environ, **IDENTITY},
-            capture_output=True, text=True, errors="replace",
+            capture_output=True, encoding="utf-8", errors="replace",
         )
         if check and p.returncode:
             raise RepoError(f"git {' '.join(args)}: {p.stderr.strip()}")
@@ -131,7 +131,7 @@ class GitRepo:
         """Current uncommitted changes as {path: content}; None marks a deletion."""
         snap = {}
         for c in self.changes():
-            snap[c.path] = None if c.status == "D" else (self.path / c.path).read_text(errors="replace")
+            snap[c.path] = None if c.status == "D" else (self.path / c.path).read_text(errors="replace", encoding="utf-8")
         return snap
 
     def restore(self, snap: dict[str, str | None]) -> None:
@@ -141,4 +141,4 @@ class GitRepo:
                 p.unlink(missing_ok=True)
             else:
                 p.parent.mkdir(parents=True, exist_ok=True)
-                p.write_text(content)
+                p.write_text(content, encoding="utf-8", newline="\n")

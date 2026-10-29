@@ -115,7 +115,7 @@ def write_files(root: Path, files: dict[str, str]) -> None:
     for rel, text in files.items():
         p = root / rel
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(text)
+        p.write_text(text, encoding="utf-8", newline="\n")
 
 
 def make_fake_target(path: Path, start_ref: str = "main") -> GitRepo:

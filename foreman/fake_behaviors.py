@@ -32,7 +32,7 @@ def prompt_section(prompt: str, key: str) -> str:
 def put(req, rel: str, text: str) -> None:
     p = req.cwd / rel
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(text)
+    p.write_text(text, encoding="utf-8", newline="\n")
 
 
 @behavior("requirements_analyst")

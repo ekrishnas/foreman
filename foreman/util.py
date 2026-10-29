@@ -28,7 +28,7 @@ def sh(
     e["PATH"] = os.path.dirname(sys.executable) + os.pathsep + e.get("PATH", "")
     try:
         p = subprocess.Popen(
-            cmd, shell=isinstance(cmd, str), cwd=cwd, env=e, text=True, errors="replace",
+            cmd, shell=isinstance(cmd, str), cwd=cwd, env=e, encoding="utf-8", errors="replace",
             stdin=subprocess.PIPE if input is not None else subprocess.DEVNULL,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True,
         )
@@ -37,7 +37,10 @@ def sh(
     try:
         out, _ = p.communicate(input=input, timeout=timeout)
     except subprocess.TimeoutExpired:
-        os.killpg(p.pid, signal.SIGKILL)
+        if hasattr(os, "killpg"):
+            os.killpg(p.pid, signal.SIGKILL)  # the shell and everything it started
+        else:
+            p.kill()  # Windows
         out, _ = p.communicate()
         return ShResult(124, out or "")
     return ShResult(p.returncode, out or "")

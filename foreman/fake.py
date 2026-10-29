@@ -22,7 +22,7 @@ def behavior(agent_name: str):
 def _plant_secret(cwd) -> None:
     for change in GitRepo(cwd).changes():
         if change.status in ("A", "M"):
-            with (cwd / change.path).open("a") as f:
+            with (cwd / change.path).open("a", encoding="utf-8", newline="\n") as f:
                 f.write(SECRET_LINE)
             return
 
@@ -53,7 +53,7 @@ class FakeWorker:
         if kind != "no_output":
             text = self.behaviors[req.agent.name](req, kind)
             if kind == "bad_path":
-                (req.cwd / "FOREMAN_BAD_PATH.txt").write_text("outside every writable path\n")
+                (req.cwd / "FOREMAN_BAD_PATH.txt").write_text("outside every writable path\n", encoding="utf-8", newline="\n")
             elif kind == "secret":
                 _plant_secret(req.cwd)
         tokens_in, tokens_out, usd = next(v for family, v in COSTS.items() if family in req.model)

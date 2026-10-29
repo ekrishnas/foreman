@@ -42,7 +42,7 @@ def validate(root: Path, change: str) -> list[str]:
         errors.append("no spec deltas under specs/<capability>/spec.md")
     for f in deltas:
         rel = f.relative_to(d)
-        ops = parse_delta(f.read_text())
+        ops = parse_delta(f.read_text(encoding="utf-8"))
         if not ops:
             errors.append(f"{rel}: no ADDED/MODIFIED/REMOVED Requirements section")
         for op, blocks in ops.items():
@@ -61,15 +61,15 @@ def archive(root: Path, change: str) -> None:
     for f in delta_files(d):
         capability = f.parent.name
         spec = root / "openspec/specs" / capability / "spec.md"
-        current = requirement_blocks(spec.read_text()) if spec.exists() else {}
-        for op, blocks in parse_delta(f.read_text()).items():
+        current = requirement_blocks(spec.read_text(encoding="utf-8")) if spec.exists() else {}
+        for op, blocks in parse_delta(f.read_text(encoding="utf-8")).items():
             if op in ("ADDED", "MODIFIED"):
                 current.update(blocks)
             elif op == "REMOVED":
                 for name in blocks:
                     current.pop(name, None)
         spec.parent.mkdir(parents=True, exist_ok=True)
-        spec.write_text(f"# {capability} Specification\n\n## Requirements\n" + "\n".join(current.values()))
+        spec.write_text(f"# {capability} Specification\n\n## Requirements\n" + "\n".join(current.values()), encoding="utf-8", newline="\n")
     target = root / "openspec/changes/archive"
     target.mkdir(parents=True, exist_ok=True)
     shutil.move(str(d), str(target / f"{date.today().isoformat()}-{change}"))

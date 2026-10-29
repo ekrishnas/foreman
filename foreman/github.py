@@ -121,10 +121,10 @@ class FakeGitHub:
     def _write(self, kind: str, n: int, data: dict) -> None:
         path = self.root / kind / f"{n}.json"
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(data, indent=1))
+        path.write_text(json.dumps(data, indent=1), encoding="utf-8", newline="\n")
 
     def _read(self, kind: str, n: int) -> dict:
-        return json.loads((self.root / kind / f"{n}.json").read_text())
+        return json.loads((self.root / kind / f"{n}.json").read_text(encoding="utf-8"))
 
     def ensure_repo(self, name: str) -> None:
         pass
