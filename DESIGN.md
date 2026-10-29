@@ -30,8 +30,9 @@ The front door is a Claude Code skill (`.claude/skills/foreman/SKILL.md` in the 
 1. finds the Foreman checkout, or asks where it is, or asks permission to clone it outside the product repo and installs its dependencies;
 2. sets up OpenSpec: checks the CLI (installing the pinned version with permission) and runs `openspec init --tools claude` (non-interactive) if the repo has no `openspec/` folder;
 3. identifies the issue tracker from the repo's remote or a pasted issue URL, checks the tracker's CLI is installed and logged in, and checks the developer has write access to the repo. Only GitHub is supported today; for Azure DevOps and Jira it says so and stops;
-4. creates the product profile `.foreman/target.yaml` by inspecting the repo and asking the developer to confirm;
-5. commits the setup files (with permission), because a run will not start from a dirty working tree.
+4. creates the product profile `.foreman/target.yaml` by inspecting the repo and asking the developer to confirm (for an empty repo it asks which language and runtime version);
+5. installs the toolchain the product needs, with permission: the version the repo targets if it has code (read from `global.json`, `<TargetFramework>`, `.nvmrc`, `go.mod` and similar), otherwise the version the developer chose, through the system package manager or Microsoft's official script; it also checks Docker when the tests need it;
+6. makes sure `.gitignore` covers build output and `logs/`, and commits the setup files (with permission), because a run will not start from a dirty working tree.
 
 On every use it then starts the run, relays questions, and reports. Claude never does engineering work and never answers on the developer's behalf. The same commands work from any terminal.
 

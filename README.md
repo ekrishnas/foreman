@@ -63,8 +63,9 @@ Then open Claude Code in the product repo and type `/foreman work on #1`. The fi
 1. **Finds Foreman**, or asks where it is, or asks your permission to clone it somewhere outside the repo, and runs `uv sync` there.
 2. **Sets up OpenSpec**: checks the `openspec` CLI (installs `@fission-ai/openspec@1.15.0` with your permission) and, if the repo has no `openspec/` folder, runs `openspec init --tools claude` (no questions asked; it also adds OpenSpec's own Claude Code skills, see [OpenSpec and the agents](#openspec-and-the-agents)).
 3. **Works out your issue tracker** from the repo's remote (or the issue URL you paste), checks the CLI is installed and logged in (`gh` today), and checks you have write access to the repo.
-4. **Creates the product profile**, `.foreman/target.yaml`: it inspects the repo, proposes the build and test commands and paths, and you confirm.
-5. **Commits the setup files** (with your permission), because a run refuses to start from a dirty working tree.
+4. **Creates the product profile**, `.foreman/target.yaml`: it inspects the repo, proposes the build and test commands and paths, and you confirm. For an empty repo it asks which language and runtime version you are building with.
+5. **Installs the toolchain** the product needs, with your permission: the version the repo itself targets if it has code (from `global.json`, `<TargetFramework>`, `.nvmrc`, `go.mod` and so on), otherwise the language and version you chose (it recommends the newest stable). It uses the system package manager (`winget`, `brew`, `uv` for Python) or Microsoft's official script for .NET, and checks Docker if your tests need it. On Windows a permission prompt may appear; accept it.
+6. **Makes sure `.gitignore` covers build output and `logs/`, and commits the setup files** (with your permission), because a run refuses to start from a dirty working tree.
 
 Prerequisites it will check for: `git`, `uv`, `claude`, `gh` (logged in), `openspec`, and your product's own toolchain (the gates run its build and test commands).
 

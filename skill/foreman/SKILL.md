@@ -87,7 +87,7 @@ For GitHub:
 Foreman knows nothing about any product until `PRODUCT/.foreman/target.yaml` exists. If it does not, create it:
 
 1. Inspect the repo for the stack: `*.sln` / `*.csproj` (.NET), `package.json` (Node), `pyproject.toml` / `requirements.txt` (Python), `go.mod`, `pom.xml` / `build.gradle` (Java), `Cargo.toml`, `Makefile`. Look for existing source, test and docs folders.
-2. If the repo has no code yet, ask the developer what they are building with.
+2. If the repo has no code yet, ask the developer what they are building with: the language and framework, and which runtime version (recommend the newest stable, long-term-support where the language has one, and let them choose). Remember the answer: step 5 installs it.
 3. Propose the profile and ask them to confirm or correct it. The fields:
 
    ```yaml
@@ -109,7 +109,32 @@ Foreman knows nothing about any product until `PRODUCT/.foreman/target.yaml` exi
    - Agents may only write inside `src`, `tests` and `docs`, so the profile must make the product fit in them. Anything else at the repo root, such as a solution file, `Dockerfile` or `docker-compose.yml`, would be refused: keep those inside `src`.
    - **No code yet (greenfield):** the commands must describe where the first projects *will* live, and must work from the repo root once they exist. Prefer commands that name a project folder over ones that need a root-level solution file (for .NET: `dotnet build src/<Name>.Api` and `dotnet test tests/<Name>.Tests`, not a bare `dotnet build`). Tell the developer the names you chose, and offer to add them to the issue.
 4. Write the confirmed file to `PRODUCT/.foreman/target.yaml`.
-5. **Check the toolchain really works**, now, not in the middle of a run. Run the profile's tool in its version form (for .NET, `dotnet --list-sdks` must list an SDK: a runtime alone cannot build; for Node, `node --version`; and so on). If the product's tests need Docker (Testcontainers, a database in compose), check `docker info` works; if the daemon is off, tell the developer to start Docker. Offer the install command for anything missing (for .NET on Windows: `winget install Microsoft.DotNet.SDK.9`) and wait.
+5. **Install the toolchain.** The profile's commands only work if the language's SDK is on this machine, and a runtime alone cannot build (for .NET, `dotnet --list-sdks` must list an SDK; a `dotnet.exe` on PATH proves nothing). Do this now, not in the middle of a run.
+
+   *Which version.*
+   - **Code already exists:** install what the repo targets. Read its version hints: .NET `global.json` (`sdk.version`), `<TargetFramework>` in `*.csproj` (`net8.0` needs SDK 8) and `Directory.Build.props`; Node `.nvmrc`, `.node-version`, `engines.node` in `package.json`; Python `.python-version`, `requires-python` in `pyproject.toml`; Go the `go` line in `go.mod`; Java `maven.compiler.release` or `java.version` in `pom.xml`, `sourceCompatibility` or a `toolchain` block in Gradle; Rust `rust-toolchain(.toml)`. If projects target different versions, install the highest. If the repo pins an exact version (a `global.json`), install exactly that. If nothing says, ask.
+   - **No code yet:** use the language and version the developer chose in item 2. If they named no version, ask "latest stable, or a specific runtime?", recommend the newest stable, and say which version you mean.
+
+   *Is it already there?* Check first (`dotnet --list-sdks`, `node --version`, `uv python list`, `go version`, `java -version`, `rustc --version`). If a suitable one is installed, say so in one line and move on.
+
+   *Install it.* Say what you will install and where it comes from, and wait for a yes. Prefer the system package manager. These package names were checked:
+
+   | Stack | Windows (winget) | macOS | Linux |
+   |---|---|---|---|
+   | .NET SDK | `winget install Microsoft.DotNet.SDK.<major>`; list them with `winget search --id Microsoft.DotNet.SDK` and take the newest non-preview unless the repo pins one | `brew install --cask dotnet-sdk` | the distro's `dotnet-sdk-<major>.0` package |
+   | Node.js | `winget install OpenJS.NodeJS.LTS` | `brew install node` | the distro package, or `nvm` for a specific version |
+   | Python | `uv python install <version>` (uv is already required) | same | same |
+   | Go | `winget install GoLang.Go` | `brew install go` | the distro package, or https://go.dev/dl |
+   | Java (JDK) | `winget install EclipseAdoptium.Temurin.<major>.JDK` | `brew install --cask temurin@<major>` | the distro's `openjdk-<major>-jdk` |
+   | Rust | `winget install Rustlang.Rustup` | `brew install rustup` | https://rustup.rs |
+
+   For an exact .NET version, or a machine with no suitable package, use Microsoft's official installer script (`https://dot.net/v1/dotnet-install.ps1` on Windows, `https://dot.net/v1/dotnet-install.sh` elsewhere) with `-Channel LTS` (the latest long-term-support release), `-Channel <major>.0`, or `-Version <exact>`. Download it and tell the developer what it is before running it. It installs into the user's own folder, which is **not on PATH**: say so, and prefer the package manager when you can. For any other stack, ask the developer how they install it.
+
+   *Windows permissions.* Installers usually need administrator rights, so a Windows prompt (UAC) will appear on the developer's screen: tell them to expect it and accept it. If the install is cancelled or fails with a permission error, tell the developer to run the same command themselves in an administrator terminal, and wait.
+
+   *Check it worked.* Run the version check again. A tool installed into a folder that was not on PATH when this session started will not be found until a new session: if the check still fails, tell the developer to restart Claude Code and run `/foreman setup` again; the steps already done will be quick.
+
+   *Docker.* If the product's tests need it (Testcontainers, a database in compose), check `docker info` works. If the daemon is off, tell the developer to start Docker Desktop.
 6. **Make sure `.gitignore` is right.** Agents cannot edit it. It must exist and ignore the stack's build output (for .NET: `dotnet new gitignore`, which covers `bin/` and `obj/`) and `logs/`, where Foreman asks agents to write their logs. Add what is missing; it is committed in step 6.
 
 ## 6. Commit the setup
