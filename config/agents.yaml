@@ -60,7 +60,7 @@ agents:
   rca_writer:
     tier: strong
     tools: [Read, Write]
-    writable: ["docs/rca/**"]
+    writable: ["openspec/docs/rca/**"]
     context: [triage, failing_test, fix_diff, validate_results]
 
   framer:
@@ -78,7 +78,7 @@ agents:
   analyst:
     tier: strong
     tools: [Read, Write]
-    writable: ["docs/spikes/{run_id}/**"]
+    writable: ["openspec/docs/spikes/{run_id}/**"]
     context: [framing, explorer_notes]
 
   pr_summarizer:

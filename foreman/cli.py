@@ -12,8 +12,11 @@ from foreman.engine import (
 )
 from foreman.github import GitHub
 from foreman.gitops import GitRepo, RepoError
+from foreman.human import TerminalHuman
 from foreman.metrics import cost_table, run_metrics
+from foreman.nodes import file_proposed_issues, split_issues
 from foreman.store import open_reader, open_store
+from foreman.util import section
 
 EXIT_CODES = {"completed": 0, "waiting": 0, "safe_stopped": 2, "observe_failed": 3}
 NEEDS_DB = "set FOREMAN_DB_URL to a Postgres URL (docker compose up -d starts one, see README)"
@@ -28,6 +31,21 @@ def create_issue_from_file(github, path: Path, issue_type: str) -> int:
         raise ValueError(f"issue type must be one of {WORKFLOWS}, got {issue_type!r}")
     title, body = issue_from_file(Path(path))
     return github.create_issue(title, body, [f"foreman:{issue_type}"])
+
+
+def handoff_from_file(github, human, path: Path, spike_issue: int, analysis: str | None = None) -> list[int]:
+    """File the issues of a spike analysis that is already approved, after the human confirms the list."""
+    text = Path(path).read_text(encoding="utf-8")
+    proposed = section(text, "Proposed issues") or section(text, "Draft user story")  # older analyses have one story
+    if not proposed:
+        raise CliError(f"{path} has no '## Proposed issues' section")
+    issues = split_issues(proposed)
+    listed = "\n".join(f"{i}. {title}" for i, (title, _) in enumerate(issues, 1))
+    decision = human.approve("handoff", f"File {len(issues)} issue(s) from {Path(path).name} for spike #{spike_issue}, "
+                                        f"labelled foreman:feature and foreman:needs-approval:\n{listed}")
+    if not decision.approved:
+        raise CliError(f"handoff not approved: {decision.note or 'no reason given'}")
+    return file_proposed_issues(github, proposed, spike_issue, analysis or Path(path).name)
 
 
 def wait_for_merge(github, pr: int, interval: float = 30, timeout: float = 86400, sleep=time.sleep) -> str:
@@ -156,6 +174,19 @@ def cmd_issue_create(args) -> int:
     return 0
 
 
+def cmd_handoff(args) -> int:
+    target = load_target(ROOT / "targets" / f"{args.target}.yaml")
+    path = Path(args.analysis).resolve()
+    try:
+        analysis = path.relative_to(target.repo).as_posix()  # the path the issues should link to
+    except ValueError:
+        analysis = path.name
+    numbers = handoff_from_file(GitHub(GitRepo(target.repo)), TerminalHuman(), path, args.issue, analysis)
+    print("filed " + ", ".join(f"#{n}" for n in numbers))
+    print("settle each issue's open decisions, add the foreman:ready label, then: foreman run --issue <n>")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--runs-dir", default=str(ROOT / "runs"), help="where run logs and fake runs live")
@@ -187,6 +218,12 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("cost", parents=[common], help="cumulative cost of an issue across all runs")
     p.add_argument("--issue", type=int, required=True)
     p.set_defaults(func=cmd_cost)
+
+    p = sub.add_parser("handoff", help="file the issues of an approved spike analysis")
+    p.add_argument("analysis", help="path to analysis.md")
+    p.add_argument("--issue", type=int, required=True, help="the spike issue number")
+    p.add_argument("--target", default="url-shortener")
+    p.set_defaults(func=cmd_handoff)
 
     p = sub.add_parser("issue", help="issue helpers")
     issue_sub = p.add_subparsers(dest="issue_command", required=True)

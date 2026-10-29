@@ -1,7 +1,7 @@
 name: url-shortener
 repo: ../url-shortener
 spec_format: openspec
-paths: { src: "src/**", tests: "tests/**", docs: "docs/**" }
+paths: { src: "src/**", tests: "tests/**", docs: "openspec/docs/**" }
 commands:
   build: dotnet build
   test: dotnet test

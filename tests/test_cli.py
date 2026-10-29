@@ -2,8 +2,11 @@ import re
 
 import pytest
 
-from foreman.cli import create_issue_from_file, main, wait_for_merge
+from foreman.cli import CliError, create_issue_from_file, handoff_from_file, main, wait_for_merge
+from foreman.fake_behaviors import ANALYSIS_DOC
 from foreman.github import FakeGitHub
+from foreman.gitops import GitRepo
+from foreman.human import ScriptedHuman
 from tests.conftest import ROOT
 
 SCENARIOS = ROOT / "scenarios"
@@ -139,3 +142,46 @@ def test_every_agent_has_a_prompt_that_states_its_role():
     for name in agents:
         text = (ROOT / "prompts" / f"{name}.md").read_text()
         assert text.startswith("# Role:") and "## Inputs" in text, name
+
+
+# ---- handoff: file the issues of an analysis that is already approved ----
+
+def analysis_file(tmp_path, text=None):
+    path = tmp_path / "analysis.md"
+    path.write_text(text or ANALYSIS_DOC.format(assumptions="- none"), encoding="utf-8")
+    return path
+
+
+def fake_github(tmp_path):
+    github = FakeGitHub(tmp_path / "gh", GitRepo.init(tmp_path / "repo"))
+    return github, github.create_issue("Explore", "body", ["foreman:spike"])
+
+
+def test_handoff_files_the_issues_of_an_approved_analysis_after_the_human_says_yes(tmp_path):
+    github, spike = fake_github(tmp_path)
+    numbers = handoff_from_file(github, ScriptedHuman(), analysis_file(tmp_path), spike)
+    assert [github.get_issue(n).title for n in numbers] == [
+        "Count clicks per day for each short link", "Show daily click counts to the link owner"]
+    assert all(github.get_issue(n).labels == ["foreman:feature", "foreman:needs-approval"] for n in numbers)
+
+
+def test_handoff_files_nothing_when_the_human_declines(tmp_path):
+    github, spike = fake_github(tmp_path)
+    with pytest.raises(CliError, match="not approved: not yet"):
+        handoff_from_file(github, ScriptedHuman({"handoff": ["reject: not yet"]}), analysis_file(tmp_path), spike)
+    assert github._next() == spike + 1  # no issue was filed
+
+
+def test_handoff_accepts_an_analysis_that_still_has_a_single_draft_user_story(tmp_path):
+    github, spike = fake_github(tmp_path)
+    text = ANALYSIS_DOC.format(assumptions="- none").split("## Proposed issues")[0] + (
+        "## Draft user story\n### Track clicks\n\nAs a link owner I want clicks.\n")
+    numbers = handoff_from_file(github, ScriptedHuman(), analysis_file(tmp_path, text), spike)
+    assert [github.get_issue(n).title for n in numbers] == ["Track clicks"]
+
+
+def test_handoff_refuses_an_analysis_with_no_issues(tmp_path):
+    github, spike = fake_github(tmp_path)
+    text = ANALYSIS_DOC.format(assumptions="- none").split("## Proposed issues")[0]
+    with pytest.raises(CliError, match="Proposed issues"):
+        handoff_from_file(github, ScriptedHuman(), analysis_file(tmp_path, text), spike)

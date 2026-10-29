@@ -111,6 +111,14 @@ def section(text: str, heading: str) -> str:
     return ""
 
 
+def subsections(text: str, level: int) -> list[tuple[str, str]]:
+    """(title, body) for each heading of exactly `level` in `text`, outside code fences."""
+    lines = text.splitlines()
+    heads = [(i, title) for i, lvl, title in _headings(lines) if lvl == level]
+    ends = [i for i, _ in heads[1:]] + [len(lines)]
+    return [(title, "\n".join(lines[i + 1:end]).strip()) for (i, title), end in zip(heads, ends)]
+
+
 def count_tests(output: str) -> int:
     """Passed-test count from a pytest or `dotnet test` summary (0 when none is found)."""
     m = re.search(r"(\d+) passed", output) or re.search(r"Passed:\s+(\d+)", output)

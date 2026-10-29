@@ -106,7 +106,7 @@ The system SHALL count one click each time a short code is resolved.
 V1_FILES = {
     "src/shortener.py": SHORTENER,
     "tests/test_shortener.py": TESTS,
-    "docs/api.md": "# API\n\n- shorten(url) -> code\n- resolve(code) -> url\n- clicks(code) -> int\n",
+    "openspec/docs/api.md": "# API\n\n- shorten(url) -> code\n- resolve(code) -> url\n- clicks(code) -> int\n",
     "openspec/specs/shortener/spec.md": V1_SPEC,
 }
 

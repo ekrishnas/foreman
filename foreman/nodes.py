@@ -11,7 +11,9 @@ from foreman.pr import build_body
 from foreman.policy import check_changes
 from foreman.context import writable_for
 from foreman.runner import Run, SafeStop, Stage, commit_changes, run_stage
-from foreman.util import count_failed, count_tests, count_total, glob_match, merge_dicts, section, sh, slug
+from foreman.util import (
+    count_failed, count_tests, count_total, glob_match, merge_dicts, section, sh, slug, subsections,
+)
 
 
 class State(TypedDict, total=False):
@@ -377,15 +379,15 @@ def after_reproduce(run: Run, ctx: dict, text: str) -> dict:
 
 
 def gate_rca(run: Run, ctx: dict, text: str) -> str | None:
-    path = run.repo.path / f"docs/rca/{ctx['issue_number']}.md"
+    path = run.repo.path / f"openspec/docs/rca/{ctx['issue_number']}.md"
     if not path.exists():
-        return f"docs/rca/{ctx['issue_number']}.md was not written"
+        return f"openspec/docs/rca/{ctx['issue_number']}.md was not written"
     missing = [h for h in RCA_SECTIONS if not section(path.read_text(encoding="utf-8"), h)]
     return f"the RCA is missing sections: {', '.join(missing)}" if missing else None
 
 
 def after_rca(run: Run, ctx: dict, text: str) -> dict:
-    return {"rca_path": f"docs/rca/{ctx['issue_number']}.md"}
+    return {"rca_path": f"openspec/docs/rca/{ctx['issue_number']}.md"}
 
 
 TRIAGE = Stage("triage", "triager", produces="triage_summary", gate=gate_triage, after=after_triage)
@@ -405,9 +407,10 @@ def validate_bugfix(run: Run):
 # ---------- spike ----------
 
 SPIKE_SECTIONS = ["Context", "Assumptions", "Options", "Trade-off matrix", "Recommendation",
-                  "Open questions", "Draft user story"]
+                  "Open questions", "Proposed issues"]
 CRITERIA = ["complexity", "cost", "performance", "risk", "operability"]
 MAX_OPTIONS = 3
+MAX_ISSUES = 10
 
 
 def parse_options(text: str) -> list[dict]:
@@ -428,6 +431,11 @@ def split_story(text: str) -> tuple[str, str]:
     if m := re.match(r"^#{1,6}\s+(.*\S)\s*$", first):
         return m.group(1), rest.strip()
     return first.strip(), text
+
+
+def split_issues(text: str) -> list[tuple[str, str]]:
+    """Proposed issues: one per `###` heading. Text without such headings is a single story (split_story)."""
+    return subsections(text, 3) or [split_story(text)]
 
 
 def spike_intake(run: Run):
@@ -467,7 +475,7 @@ def after_explore(run: Run, ctx: dict, text: str) -> dict:
 
 
 def analysis_path(run: Run) -> str:
-    return f"docs/spikes/{run.run_id}/analysis.md"
+    return f"openspec/docs/spikes/{run.run_id}/analysis.md"
 
 
 def gate_analysis(run: Run, ctx: dict, text: str) -> str | None:
@@ -479,13 +487,19 @@ def gate_analysis(run: Run, ctx: dict, text: str) -> str | None:
     if missing:
         return f"the analysis is missing sections: {', '.join(missing)}"
     matrix = section(body, "Trade-off matrix").lower()
-    lacking = [c for c in CRITERIA if c not in matrix]
-    return f"the trade-off matrix must cover: {', '.join(lacking)}" if lacking else None
+    if lacking := [c for c in CRITERIA if c not in matrix]:
+        return f"the trade-off matrix must cover: {', '.join(lacking)}"
+    issues = subsections(section(body, "Proposed issues"), 3)
+    if not 1 <= len(issues) <= MAX_ISSUES:
+        return f"'## Proposed issues' must list between 1 and {MAX_ISSUES} issues as '### <title>' headings (found {len(issues)})"
+    if bare := [title for title, text in issues if not text]:
+        return f"proposed issues without a description: {', '.join(bare)}"
+    return None
 
 
 def after_analysis(run: Run, ctx: dict, text: str) -> dict:
     body = (run.repo.path / analysis_path(run)).read_text(encoding="utf-8")
-    return {"analysis_path": analysis_path(run), "draft_story": section(body, "Draft user story"),
+    return {"analysis_path": analysis_path(run), "proposed_issues": section(body, "Proposed issues"),
             "pr_narrative": section(body, "Recommendation")}
 
 
@@ -529,13 +543,30 @@ def prune_scratch(run: Run):
     return node
 
 
+def file_proposed_issues(github, text: str, spike_issue: int, analysis: str, pr: int | None = None) -> list[int]:
+    """File one feature issue per proposed issue and list them, in build order, on the spike issue.
+
+    Each is labelled foreman:needs-approval: the analysis's open decisions must be settled and a human must
+    add foreman:ready before a run may start on it.
+    """
+    issues = split_issues(text)
+    where = f"spike #{spike_issue}" + (f" (PR #{pr})" if pr else "")
+    numbers = []
+    for position, (title, body) in enumerate(issues, 1):
+        footer = (f"\n\n---\nPart {position} of {len(issues)} of the plan from {where}. Analysis: `{analysis}`. "
+                  "Settle its open decisions, then add the `foreman:ready` label to allow a run.")
+        numbers.append(github.create_issue(title, body + footer, ["foreman:feature", "foreman:needs-approval"]))
+    plan = "\n".join(f"{i}. #{n} {title}" for i, (n, (title, _)) in enumerate(zip(numbers, issues), 1))
+    github.comment(spike_issue, f"Analysis approved. Issues filed from it, in build order:\n{plan}")
+    return numbers
+
+
 def handoff(run: Run):
     def node(state: State) -> dict:
         ctx = state["ctx"]
-        title, body = split_story(ctx["draft_story"])
-        footer = f"\n\n---\nSpawned from spike #{run.issue_id} (PR #{ctx['pr_number']}). Analysis: `{ctx['analysis_path']}`."
-        issue = run.github.create_issue(title, body + footer, ["foreman:feature"])
-        run.github.comment(run.issue_id, f"The recommended option's draft user story was filed as feature issue #{issue}.")
-        passed(run, "handoff", issue=issue)
-        return {"ctx": {"handoff_issue": issue}}
+        text = ctx.get("proposed_issues") or ctx["draft_story"]  # runs checkpointed before issues were proposed
+        numbers = file_proposed_issues(run.github, text, run.issue_id, ctx["analysis_path"], ctx.get("pr_number"))
+        run.audit("handoff", "issues_filed", issues=numbers)
+        passed(run, "handoff", issues=numbers)
+        return {"ctx": {"handoff_issues": numbers}}
     return node

@@ -41,7 +41,7 @@ def test_work_product_lands_on_main_and_spec_is_archived(tmp_path):
     s.start()
     root = s.run.repo.path
     assert s.run.repo.branch() == "main"
-    for rel in ("src/shortener.py", "tests/test_shortener.py", "docs/api.md", "openspec/specs/shortener/spec.md"):
+    for rel in ("src/shortener.py", "tests/test_shortener.py", "openspec/docs/api.md", "openspec/specs/shortener/spec.md"):
         assert (root / rel).exists(), rel
     archived = list((root / "openspec/changes/archive").glob("*/tasks.md"))
     assert archived and "- [ ]" not in archived[0].read_text()

@@ -51,11 +51,11 @@ def test_reproduce_is_committed_before_fix(tmp_path):
 def test_rca_document_has_every_required_section_and_pr_links_it(tmp_path):
     s = session_for(tmp_path)
     result = s.start()
-    rca = (s.run.repo.path / "docs/rca/1.md").read_text()
+    rca = (s.run.repo.path / "openspec/docs/rca/1.md").read_text()
     for heading in ("Summary", "Impact", "Timeline", "Root cause", "Why it was missed", "Fix", "Prevention"):
         assert f"## {heading}" in rca
     body = json.loads((s.run.dir / "github/prs" / f"{result.pr}.json").read_text())["body"]
-    assert "## Root cause analysis" in body and "docs/rca/1.md" in body and "Closes #1" in body
+    assert "## Root cause analysis" in body and "openspec/docs/rca/1.md" in body and "Closes #1" in body
 
 
 def test_living_spec_requirement_is_modified_by_archive(tmp_path):

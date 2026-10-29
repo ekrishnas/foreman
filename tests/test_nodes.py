@@ -4,7 +4,7 @@ import pytest
 
 from foreman.config import load_agents
 from foreman.nodes import (
-    gate_requirements, parse_bullets, parse_options, split_story, tick_tasks, validate_feature_checks,
+    gate_requirements, parse_bullets, parse_options, split_issues, split_story, tick_tasks, validate_feature_checks,
 )
 from foreman.runner import SafeStop
 
@@ -170,3 +170,12 @@ def test_split_story_without_heading_uses_the_first_line():
 def test_split_story_accepts_a_heading_of_any_level():
     assert split_story("### Track clicks\n\nAs a user I want x.\n\n#### Acceptance criteria\n- a") == (
         "Track clicks", "As a user I want x.\n\n#### Acceptance criteria\n- a")
+
+
+def test_split_issues_returns_one_issue_per_heading():
+    text = "### First\nBody 1\n\n### Second\nBody 2\n\n#### Acceptance criteria\n- a"
+    assert split_issues(text) == [("First", "Body 1"), ("Second", "Body 2\n\n#### Acceptance criteria\n- a")]
+
+
+def test_split_issues_treats_a_story_without_issue_headings_as_one_issue():
+    assert split_issues("# Track clicks\n\nAs a user I want x.") == [("Track clicks", "As a user I want x.")]

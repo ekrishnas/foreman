@@ -5,7 +5,7 @@ from foreman.engine import open_session
 from tests.conftest import ROOT
 
 INPUT = str(ROOT / "scenarios/inputs/spike-analytics.md")
-ANALYSIS = "docs/spikes/s1/analysis.md"
+ANALYSIS = "openspec/docs/spikes/s1/analysis.md"
 
 
 def scenario(**kw):
@@ -62,21 +62,42 @@ def test_analysis_has_the_required_sections_and_trade_off_criteria(tmp_path):
     s.start()
     text = (s.run.repo.path / ANALYSIS).read_text()
     for heading in ("Context", "Assumptions", "Options", "Trade-off matrix", "Recommendation",
-                    "Open questions", "Draft user story"):
+                    "Open questions", "Proposed issues"):
         assert f"## {heading}" in text
     for criterion in ("Complexity", "Cost", "Performance", "Risk", "Operability"):
         assert criterion in text
 
 
-def test_handoff_files_a_feature_issue_from_the_draft_story_linked_to_the_spike(tmp_path):
+def test_merging_the_analysis_files_one_issue_per_proposed_issue_linked_to_the_spike(tmp_path):
     s = session_for(tmp_path)
     result = s.start()
-    new = s.ctx()["handoff_issue"]
-    issue = s.run.github.get_issue(new)
-    assert issue.labels == ["foreman:feature"] and issue.title == "Track clicks per day for each short link"
-    assert "As a link owner" in issue.body and "spike #1" in issue.body and f"PR #{result.pr}" in issue.body
+    numbers = s.ctx()["handoff_issues"]
+    issues = [s.run.github.get_issue(n) for n in numbers]
+    assert [i.title for i in issues] == ["Count clicks per day for each short link", "Show daily click counts to the link owner"]
+    for position, issue in enumerate(issues, 1):
+        assert issue.labels == ["foreman:feature", "foreman:needs-approval"]  # a human adds foreman:ready to start a build
+        assert f"Part {position} of 2" in issue.body and "spike #1" in issue.body and f"PR #{result.pr}" in issue.body
+        assert ANALYSIS in issue.body
+    assert "As a link owner" in issues[0].body
     spike_comments = json.loads((s.run.dir / "github/issues/1.json").read_text())["comments"]
-    assert any(f"#{new}" in c for c in spike_comments)
+    assert any(all(f"#{n}" in c for n in numbers) for c in spike_comments)
+    assert [e.details["issues"] for e in events(s, "issues_filed")] == [numbers]
+
+
+def test_the_pr_says_which_issues_merging_will_file_and_asks_for_the_open_questions_to_be_answered(tmp_path):
+    s = session_for(tmp_path)
+    result = s.start()
+    body = json.loads((s.run.dir / "github/prs" / f"{result.pr}.json").read_text())["body"]
+    assert "## On merge" in body and "2 issues" in body and "foreman:needs-approval" in body
+    assert "1. Count clicks per day for each short link" in body and "2. Show daily click counts to the link owner" in body
+    assert "answer the open questions" in body.lower()
+
+
+def test_an_analysis_without_proposed_issues_is_rejected_and_retried(tmp_path):
+    s = session_for(tmp_path, faults=[{"stage": "analysis", "calls": [0], "kind": "no_issues"}])
+    assert s.start().status == "completed"
+    reasons = [e.details["reason"] for e in events(s, "attempt_failed", "analysis")]
+    assert len(reasons) == 1 and "Proposed issues" in reasons[0]
 
 
 def test_pr_body_has_cost_but_no_test_results_or_openspec_change(tmp_path):
@@ -116,4 +137,4 @@ def test_a_spike_pr_closed_without_merge_stops_before_handoff(tmp_path):
     s = session_for(tmp_path, script={"release": ["reject: not convincing"], "answers": []})
     result = s.start()
     assert result.status == "safe_stopped" and "not convincing" in result.reason
-    assert "handoff_issue" not in s.ctx()
+    assert "handoff_issues" not in s.ctx()

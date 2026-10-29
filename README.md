@@ -4,9 +4,9 @@ A governed agentic SDLC orchestrator. Give it a work item (a GitHub issue) and i
 
 | Workflow | Input | Output |
 |---|---|---|
-| `feature` | user story | pull request + docs, specs archived in the same PR |
-| `bugfix` | bug report | pull request with a failing test first + RCA document |
-| `spike` | ambiguous requirement | analysis document PR + a new feature issue from its draft story |
+| `feature` | user story | pull request + docs under `openspec/docs/`, specs archived in the same PR |
+| `bugfix` | bug report | pull request with a failing test first + RCA document (`openspec/docs/rca/`) |
+| `spike` | ambiguous requirement | analysis PR (`openspec/docs/spikes/<run>/analysis.md`); merging it files the proposed issues |
 
 ## Quick start (offline, no accounts)
 
@@ -32,6 +32,7 @@ Fake mode builds a throwaway Python "url shortener" repo under `runs/<run-id>/ta
 | `foreman metrics <run-id>` | stage success, retry rate, rollbacks, MTTR, latency, human wait, cost |
 | `foreman cost --issue <n>` | cumulative cost of an issue across all its runs |
 | `foreman issue create <file.md> --type feature\|bugfix\|spike` | file a markdown file as a labelled issue |
+| `foreman handoff <analysis.md> --issue <spike>` | file the issues of a spike analysis that is already approved, after you confirm the list |
 
 Exit codes: `0` completed (or paused waiting for a merge), `1` error or unmet `expect`, `2` safe-stopped, `3` observe failed.
 
@@ -50,6 +51,18 @@ Exit codes: `0` completed (or paused waiting for a merge), `1` error or unmet `e
    `export FOREMAN_DB_URL=postgresql://foreman:foreman@localhost:5432/foreman`.
 5. `git config user.name` and `user.email` set in the target repo (or globally): Foreman commits as you.
 6. `uv run foreman run scenarios/greenfield.yaml --mode live`. On the first greenfield run Foreman creates `../url-shortener` and the GitHub repo (private, PRs required on `main`). The run pauses at the PR; merge it on GitHub, then `foreman resume <run-id>` (or `--poll`).
+
+### Spikes: from analysis to issues
+
+Everything the agents write for people lives under `openspec/docs/` in the target repo (`spikes/<run>/analysis.md`, `rca/<issue>.md`, and the doc writer's pages), next to `openspec/specs/` and `openspec/changes/`. Agents can write to only one of those areas each, so the doc writer cannot touch an approved design.
+
+A spike ends in a pull request that adds one analysis file. The analyst keeps it short and finishes with **Open questions** (numbered decisions, each with a recommended answer, then a list of things only testing can settle) and **Proposed issues**: 1 to 10 small `### <title>` issues in build order.
+
+1. Open the PR. Its description says which issues merging will file. Answer the decisions by editing `analysis.md` in the PR.
+2. **Merging the PR is the approval.** `foreman resume` (or `--poll`) then files one GitHub issue per proposed issue and lists them in build order on the spike issue. Foreman files them through `gh`, never the agents.
+3. Each new issue is labelled `foreman:feature` and `foreman:needs-approval`, so no run can start on it. Settle its decisions, add `foreman:ready`, then `foreman run --issue <n>`.
+
+If the analysis reached the base branch without a PR (or you approved it some other way), run `foreman handoff <analysis.md> --issue <spike>`: it shows the list, asks you to confirm, and files the same issues. An older analysis with a single `## Draft user story` section files one issue.
 
 ### Branches and commits
 

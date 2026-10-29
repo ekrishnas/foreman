@@ -1,5 +1,6 @@
 """PR body assembled by code (DESIGN.md section 9); the narrative comes from the summarizer agent."""
 from foreman.metrics import cost_table
+from foreman.util import subsections
 
 
 def approvals_text(run) -> str:
@@ -47,6 +48,16 @@ def risks_text(run, ctx: dict) -> str:
     return "\n".join(lines)
 
 
+def on_merge_text(proposed: str) -> str:
+    titles = [title for title, _ in subsections(proposed, 3)]
+    listed = "\n".join(f"{i}. {title}" for i, title in enumerate(titles, 1))
+    plural = "s" if len(titles) != 1 else ""
+    return (f"## On merge\nMerging this PR approves the analysis. Foreman then files {len(titles)} issue{plural}, "
+            f"labelled `foreman:feature` and `foreman:needs-approval`:\n\n{listed}\n\n"
+            "Before merging, answer the open questions by editing `analysis.md` in this PR. "
+            "To start a build, settle the decisions and add `foreman:ready` to an issue.")
+
+
 def build_body(run, ctx: dict, narrative: str) -> str:
     link = f"Linked issue: #{ctx['issue_number']}"
     if ctx.get("change_id") and run.workflow != "spike":
@@ -57,6 +68,8 @@ def build_body(run, ctx: dict, narrative: str) -> str:
         f"## Gates, retries and policy\n{gates_text(run)}",
         f"## Approvals\n{approvals_text(run)}",
     ]
+    if run.workflow == "spike" and ctx.get("proposed_issues"):
+        sections.insert(1, on_merge_text(ctx["proposed_issues"]))
     if ctx.get("validate_results"):
         sections.append(f"## Test results\n{ctx['validate_results']}")
     sections.append("## Cost\n" + cost_table(run.store.cost_events(run_id=run.run_id),

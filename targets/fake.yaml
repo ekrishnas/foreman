@@ -3,7 +3,7 @@
 name: fake
 repo: runs/fake-target
 spec_format: openspec
-paths: { src: "src/**", tests: "tests/**", docs: "docs/**" }
+paths: { src: "src/**", tests: "tests/**", docs: "openspec/docs/**" }
 commands:
   build: python -m compileall -q src
   test: python -m pytest -q

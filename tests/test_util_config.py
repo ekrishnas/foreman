@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from foreman.config import allowed_tools, load_agents, load_scenario, load_target
-from foreman.util import glob_match, merge_dicts, section, sh, sha, slug
+from foreman.util import glob_match, merge_dicts, section, sh, sha, slug, subsections
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -158,3 +158,13 @@ def test_load_scenario_rejects_unknown_workflow(tmp_path):
     p.write_text("name: x\nworkflow: nope\ninput: 1\ntarget: fake\n")
     with pytest.raises(ValueError, match="workflow"):
         load_scenario(p)
+
+
+def test_subsections_split_on_headings_of_one_level_and_ignore_headings_in_code_fences():
+    text = "intro\n### One\nbody 1\n#### Detail\nmore\n### Two\n```\n### not a heading\n```\nbody 2"
+    assert subsections(text, 3) == [
+        ("One", "body 1\n#### Detail\nmore"), ("Two", "```\n### not a heading\n```\nbody 2")]
+
+
+def test_subsections_of_text_without_such_headings_is_empty():
+    assert subsections("just text\n## Two", 3) == []

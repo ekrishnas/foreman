@@ -90,7 +90,7 @@ def test_writer(req, fault):
 
 @behavior("doc_writer")
 def doc_writer(req, fault):
-    put(req, "docs/api.md", "# API\n\n" + prompt_section(req.prompt, "contract") + "\n")
+    put(req, "openspec/docs/api.md", "# API\n\n" + prompt_section(req.prompt, "contract") + "\n")
     return "Documented the API.\nDONE: 3.1"
 
 
@@ -185,7 +185,7 @@ def fixer(req, fault):
 @behavior("rca_writer")
 def rca_writer(req, fault):
     issue = re.search(r"- Issue number: (\d+)", req.prompt).group(1)
-    put(req, f"docs/rca/{issue}.md", RCA)
+    put(req, f"openspec/docs/rca/{issue}.md", RCA)
     return "Wrote the RCA."
 
 
@@ -215,13 +215,21 @@ Build option-3: Postgres counters with periodic rollups. It needs no new infrast
 ## Open questions
 - How long must raw clicks be retained?
 
-## Draft user story
-### Track clicks per day for each short link
+## Proposed issues
+### Count clicks per day for each short link
 
-As a link owner I want to see clicks per day for each of my links, so that I can tell which links are used.
+As a link owner I want clicks counted per link per day, so that I can tell which links are used.
 
 #### Acceptance criteria
 - Clicks are counted per link per day
+
+### Show daily click counts to the link owner
+
+Depends on: Count clicks per day for each short link
+
+As a link owner I want to see the daily counts of my links.
+
+#### Acceptance criteria
 - The current day is at most one hour stale
 """
 
@@ -262,7 +270,9 @@ def analyst(req, fault):
     doc = ANALYSIS_DOC.format(assumptions="- Hourly updates are acceptable")
     if fault == "missing_matrix":
         doc = re.sub(r"## Trade-off matrix.*?(?=## Recommendation)", "", doc, flags=re.S)
-    put(req, f"docs/spikes/{run_id}/analysis.md", doc)
+    if fault == "no_issues":
+        doc = doc.split("## Proposed issues")[0] + "## Proposed issues\nTBD\n"
+    put(req, f"openspec/docs/spikes/{run_id}/analysis.md", doc)
     return "Wrote the analysis."
 
 
