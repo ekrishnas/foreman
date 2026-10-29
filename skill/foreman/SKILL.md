@@ -208,7 +208,7 @@ When the run ends, read its output and tell the developer, briefly:
 - **status** and the pull request link;
 - **cost** of the run and of the issue;
 - for a log check: the verdict (`working`, `failing`, `inconclusive`), the evidence, and the log file that was used (the `reason:` line);
-- for `safe_stopped`: the reason in plain words (run `foreman logs <run id> --problems` to see which stage failed and how many times, and say what you find), and offer `foreman resume <run id>` once they have dealt with it (for example raised `budget_usd` in `FOREMAN/runs/<run id>/run.json`, or merged the pull request).
+- for `safe_stopped`: Foreman's reason **word for word, in quotes**, then one sentence on what it means. Never reword it into something Foreman did not say: for example, do not say a check "could not be confirmed" or "could not verify" something unless the reason says so. Then list what failed and what passed, using the results block of the last `Validation failed` comment on the issue (`build`, `tests`, `tasks`, `openspec`, `policy`) and `foreman logs <run id> --problems` for which stage failed and how many times. Say plainly when a check you have no information about is unknown. Then offer `foreman resume <run id>` once they have dealt with it (for example raised `budget_usd` in `FOREMAN/runs/<run id>/run.json`, or merged the pull request).
 
 ## Updating Foreman (`/foreman update`)
 

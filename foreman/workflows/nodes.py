@@ -220,19 +220,40 @@ def check_branch_policy(run: Run, ctx: dict) -> tuple[list[str], list[str]]:
     return [f"policy: {d}" for d in blocking], [f"policy: {'clean' if not blocking else 'FAIL'}"]
 
 
+TASK_RULE = ("A task is ticked only when its agent ends a reply with `DONE: <task id>`; "
+             "Foreman does not run a task's own verification step.")
+
+
+def unchecked_tasks(text: str) -> list[tuple[str, str, str]]:
+    """(id, group, title) of each unchecked task in a tasks.md; the group is its `## 1. Implementation` heading."""
+    found, group = [], ""
+    for line in text.splitlines():
+        if heading := re.match(r"^##\s+(?:\d+\.\s*)?(.*\S)\s*$", line):
+            group = heading.group(1)
+        elif task := re.match(r"^\s*- \[ \]\s+(\S+)\s*(.*)$", line):
+            found.append((task.group(1), group, task.group(2)))
+    return found
+
+
+def unreported_tasks(tasks: list[tuple[str, str, str]]) -> str:
+    """The failure for tasks nobody reported done: the first line names them, the rest says what each one is."""
+    named = ", ".join(f"{i} ({g})" if g else i for i, g, _ in tasks)
+    return "\n".join([f"tasks not reported done: {named}", *(f"- {i} {title}".rstrip() for i, _, title in tasks), TASK_RULE])
+
+
 def validate_feature_checks(run: Run, ctx: dict, min_tests: int = 1) -> tuple[list[str], str]:
     """Deterministic validation: build, full tests, tasks ticked, OpenSpec, branch-wide policy."""
     failures, results = check_build_and_tests(run, min_tests)
 
     tasks_file = change_dir(run, ctx) / "tasks.md"
     text = tasks_file.read_text(encoding="utf-8") if tasks_file.exists() else ""
-    open_tasks = re.findall(r"^\s*- \[ \]\s+(\S+)", text, re.M)
-    total = len(open_tasks) + len(re.findall(r"^\s*- \[x\]", text, re.M | re.I))
-    results.append(f"tasks: {total - len(open_tasks)}/{total}")
+    unchecked = unchecked_tasks(text)
+    total = len(unchecked) + len(re.findall(r"^\s*- \[x\]", text, re.M | re.I))
+    results.append(f"tasks: {total - len(unchecked)}/{total}")
     if not text:
         failures.append("tasks.md is missing")
-    elif open_tasks:
-        failures.append(f"unchecked tasks: {', '.join(open_tasks)}")
+    elif unchecked:
+        failures.append(unreported_tasks(unchecked))
 
     ok, out = run.spec.validate(ctx["change_id"])
     results.append(f"openspec: {'valid' if ok else 'INVALID'}")
@@ -243,6 +264,15 @@ def validate_feature_checks(run: Run, ctx: dict, min_tests: int = 1) -> tuple[li
     return failures + policy_failures, "\n".join(results + policy_results)
 
 
+DETAIL_LINES = 15  # most lines of one failure that go into the issue comment (the end of a long build or test output)
+
+
+def failure_detail(failures: list[str]) -> str:
+    """What each failed check said beyond its first line, so the issue thread shows the error and not just its name."""
+    blocks = [[lines[0], *lines[1:][-DETAIL_LINES:]] for f in failures if len(lines := f.splitlines()) > 1]
+    return "\n\n".join("\n".join(block) for block in blocks)
+
+
 def finish_validation(run: Run, ctx: dict, failures: list[str], results: str) -> dict:
     """Shared tail of every validate node: pass, or loop back (max_retries times), or safe-stop with a rollback."""
     if not failures:
@@ -251,10 +281,15 @@ def finish_validation(run: Run, ctx: dict, failures: list[str], results: str) ->
         return {"ctx": {"validated": True, "validate_results": results}}
     loops = ctx.get("validate_loops", 0) + 1
     reason = "; ".join(f.splitlines()[0] for f in failures)
-    run.github.comment(run.issue_id, f"Validation failed (attempt {loops}): {reason}\n```\n{results}\n```")
+    detail = failure_detail(failures)
+    run.github.comment(
+        run.issue_id,
+        f"Validation failed (attempt {loops} of {run.max_retries + 1}): {reason}\n\n"
+        + (f"{detail}\n\n" if detail else "") + f"```\n{results}\n```")
     run.audit("validate", "attempt_failed", attempt=loops, reason=reason)
     if loops > run.max_retries:
-        raise SafeStop(f"validation failed {loops} times: {reason}", rollback=True, stage="validate")
+        checks = "; ".join(results.splitlines())
+        raise SafeStop(f"validation failed {loops} times: {reason} (last checks: {checks})", rollback=True, stage="validate")
     run.audit("validate", "retry", attempt=loops)
     return {"ctx": {"validated": False, "validate_loops": loops, "validate_results": results,
                     "last_failure": f"(validation attempt {loops})\n" + "\n".join(failures)}}

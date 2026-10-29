@@ -242,7 +242,7 @@ flowchart TD
     classDef stop fill:#fee2e2,stroke:#dc2626,color:#111
 ```
 
-Foreman ticks a task in `tasks.md` only when the agent that did it ends its reply with `DONE: <task id>`. A task nobody reports stays unchecked, and the validation fails with `unchecked tasks: ...`.
+Foreman ticks a task in `tasks.md` only when the agent that did it ends its reply with `DONE: <task id>`. Foreman does not run a task's own verification step. A task nobody reports stays unchecked, and the validation fails with `tasks not reported done: 1.1 (Implementation), ...`, followed by each task's text. The comment on the issue shows what every failed check said (the end of a build or test output, the list of tasks) and the results of all checks, and the final stop repeats them: `validation failed 3 times: <what failed> (last checks: build: pass; tests: 7 passed; ...)`.
 
 **new_implementation:** a new feature in a repo that has no application code yet
 

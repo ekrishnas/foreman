@@ -6,6 +6,7 @@ from foreman.core.config import load_agents
 from foreman.core.runner import SafeStop
 from foreman.workflows.new_implementation import gate_requirements
 from foreman.workflows.nodes import (
+    finish_validation,
     gate_observability,
     gate_wrote,
     parse_bullets,
@@ -137,7 +138,48 @@ def test_validate_reports_each_problem(make_run, repo):
     ctx = {"change_id": "c-1", "base_commit": repo.git("rev-parse", "HEAD~1").strip()}
     failures, _ = validate_feature_checks(run, ctx)
     text = "\n".join(failures)
-    assert "tests failed" in text and "unchecked tasks: 2.1" in text
+    assert "tests failed" in text and "tasks not reported done: 2.1" in text
+
+
+def test_validate_names_each_task_no_agent_reported_done(make_run, repo):
+    run = make_run(AGENTS)
+    make_valid_change(repo)
+    (repo.path / "openspec/changes/c-1/tasks.md").write_text(
+        "## 1. Implementation\n\n- [x] 1.1 make the project\n"
+        "- [ ] 1.2 add `Program.cs`; verify `dotnet restore` succeeds\n\n"
+        "## 2. Tests\n\n- [ ] 2.1 write the health test\n")
+    repo.commit("work")
+    ctx = {"change_id": "c-1", "base_commit": repo.git("rev-parse", "HEAD~1").strip()}
+    failures, _ = validate_feature_checks(run, ctx)
+    first, *detail = next(f for f in failures if f.startswith("tasks not reported done")).splitlines()
+    assert first == "tasks not reported done: 1.2 (Implementation), 2.1 (Tests)"
+    assert "- 1.2 add `Program.cs`; verify `dotnet restore` succeeds" in detail
+    assert "- 2.1 write the health test" in detail
+    assert any("DONE: <task id>" in line and "does not run" in line for line in detail)
+
+
+def test_the_final_stop_says_what_failed_and_what_passed(make_run):
+    run = make_run({})
+    run.github.create_issue("story", "body", [])
+    failures = ["tasks not reported done: 1.1 (Implementation)\n- 1.1 make the project"]
+    results = "build: pass\ntests: 7 passed\ntasks: 9/10\nopenspec: valid\npolicy: clean"
+    with pytest.raises(SafeStop) as stop:
+        finish_validation(run, {"validate_loops": 2}, failures, results)
+    assert stop.value.reason == (
+        "validation failed 3 times: tasks not reported done: 1.1 (Implementation) "
+        "(last checks: build: pass; tests: 7 passed; tasks: 9/10; openspec: valid; policy: clean)")
+    assert stop.value.rollback
+
+
+def test_a_failed_validation_comment_shows_the_detail_of_each_failure(make_run):
+    run = make_run({})
+    run.github.create_issue("story", "body", [])
+    failures = ["build failed:\nerror CS1002: ; expected", "tasks not reported done: 1.1\n- 1.1 make the project"]
+    finish_validation(run, {}, failures, "build: FAIL\ntasks: 0/1")
+    comment = run.github._read("issues", run.issue_id)["comments"][-1]
+    assert "Validation failed (attempt 1 of 3)" in comment
+    assert "error CS1002: ; expected" in comment and "- 1.1 make the project" in comment
+    assert "build: FAIL" in comment
 
 
 def test_validate_flags_a_secret_anywhere_on_the_branch(make_run, repo):
