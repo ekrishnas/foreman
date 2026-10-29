@@ -201,7 +201,7 @@ When the run ends, read its output and tell the developer, briefly:
 - **status** and the pull request link;
 - **cost** of the run and of the issue;
 - for a log check: the verdict (`working`, `failing`, `inconclusive`), the evidence, and the log file that was used (the `reason:` line);
-- for `safe_stopped`: the reason in plain words, and offer `foreman resume <run id>` once they have dealt with it (for example raised `budget_usd` in `FOREMAN/runs/<run id>/run.json`, or merged the pull request).
+- for `safe_stopped`: the reason in plain words (run `foreman logs <run id> --problems` to see which stage failed and how many times, and say what you find), and offer `foreman resume <run id>` once they have dealt with it (for example raised `budget_usd` in `FOREMAN/runs/<run id>/run.json`, or merged the pull request).
 
 ## Never
 

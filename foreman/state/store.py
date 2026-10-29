@@ -97,6 +97,12 @@ class Store:
         return [AuditEvent(r["run_id"], r["workflow"], r["stage"], r["event"], r["attempt"], r["model"],
                            r["duration_ms"], json.loads(r["details"]), r["ts"]) for r in rows]
 
+    def runs(self) -> list[dict]:
+        """Every run that has recorded anything: id, first and last timestamp, number of events."""
+        rows = self._all("SELECT run_id, MIN(ts) AS started, MAX(ts) AS last, COUNT(*) AS events "
+                         "FROM audit_events GROUP BY run_id ORDER BY MIN(ts)")
+        return [dict(r) for r in rows]
+
     def cost_events(self, run_id: str | None = None, issue_id: int | None = None) -> list[CostEvent]:
         rows = self._all("SELECT * FROM cost_events WHERE (? IS NULL OR run_id = ?) AND (? IS NULL OR issue_id = ?) "
                          "ORDER BY id", (run_id, run_id, issue_id, issue_id))

@@ -2,7 +2,7 @@ import json
 import re
 
 from foreman.cli import main
-from foreman.state.store import AuditEvent, Store
+from foreman.state.store import AuditEvent, CostEvent, Store
 from tests.conftest import ROOT
 from tests.doubles.run import fake_factory
 from tests.doubles.scenario import load_scenario
@@ -131,3 +131,63 @@ def test_the_example_issues_exist_and_the_target_profile_matches_the_real_repo()
     assert (ROOT / "examples/bugfix-click-counts.md").is_file()
     profile = load_target(ROOT / "examples/target.yaml", repo=ROOT / "my-app")
     assert profile.name == "my-app" and profile.commands["test"] and profile.paths["src"]
+
+
+# ---- logs: what Foreman did
+
+RUN = "20261029-101500-ab12"
+
+
+def seed_run(tmp_path, run=RUN):
+    store = Store(tmp_path / "foreman.db")
+    store.audit(AuditEvent(run, "route", "classify", "stage_passed", 0, "m", 4200))
+    store.audit(AuditEvent(run, "bugfix", "classify", "classified", details={"type": "bugfix", "reason": "stack trace in the issue"}))
+    store.audit(AuditEvent(run, "bugfix", "reproduce", "attempt_failed", 0, "m", details={"reason": "No failing test, no fix"}))
+    store.audit(AuditEvent(run, "bugfix", "reproduce", "stage_passed", 1, "m", 61000, {"commit": "abc123", "findings": []}))
+    store.audit(AuditEvent(run, "bugfix", "run", "safe_stop", details={"reason": "budget exceeded"}))
+    store.cost(CostEvent(run, 3, "bugfix", "reproduce", "reproducer", 1, "m", 8000, 900, 0.31, 61000))
+    return store
+
+
+def test_logs_without_a_run_lists_every_run_with_its_type_status_and_cost(tmp_path, capsys):
+    seed_run(tmp_path)
+    store = Store(tmp_path / "foreman.db")
+    store.audit(AuditEvent("20261029-110000-cd34", "greenfield", "run", "run_completed"))
+    store.audit(AuditEvent("20261029-120000-ef56", "spike", "frame", "stage_passed"))
+    code, out = cli(tmp_path, capsys, "logs")
+    lines = {line.split()[0]: line for line in out.splitlines()}
+    assert code == 0
+    assert "bugfix" in lines[RUN] and "safe_stopped" in lines[RUN] and "5 events" in lines[RUN] and "$0.31" in lines[RUN]
+    assert "completed" in lines["20261029-110000-cd34"]
+    assert "running or interrupted" in lines["20261029-120000-ef56"]
+
+
+def test_logs_with_no_runs_says_so(tmp_path, capsys):
+    assert "no runs recorded yet" in cli(tmp_path, capsys, "logs")[1]
+
+
+def test_logs_for_a_run_is_a_timeline_without_the_noise(tmp_path, capsys):
+    seed_run(tmp_path)
+    code, out = cli(tmp_path, capsys, "logs", RUN)
+    assert code == 0 and len(out.splitlines()) == 5
+    assert "classified" in out and "type=bugfix" in out and "reason=stack trace in the issue" in out
+    assert "reason=No failing test, no fix" in out and "reproduce" in out and "#1" in out  # the second attempt is numbered
+    assert "abc123" not in out and "findings" not in out  # commit ids and empty lists are left out
+
+
+def test_logs_problems_shows_only_failures_and_stops(tmp_path, capsys):
+    seed_run(tmp_path)
+    out = cli(tmp_path, capsys, "logs", RUN, "--problems")[1]
+    assert "attempt_failed" in out and "safe_stop" in out and "budget exceeded" in out
+    assert "classified" not in out and "stage_passed" not in out
+
+
+def test_logs_cost_adds_what_each_agent_call_cost(tmp_path, capsys):
+    seed_run(tmp_path)
+    out = cli(tmp_path, capsys, "logs", RUN, "--cost")[1]
+    assert "reproducer" in out and "0.31" in out and "total $0.31" in out
+
+
+def test_logs_for_an_unknown_run_is_an_error(tmp_path, capsys):
+    code, out = cli(tmp_path, capsys, "logs", "nope")
+    assert code == 1 and "no events recorded for run nope" in out

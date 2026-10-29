@@ -112,12 +112,35 @@ uv run foreman resume <id>                                      # continue a saf
 | `foreman pending [--run ID] [--wait SECONDS]` | list open questions. With `--wait`, block until there is one, the run finished, or time is up |
 | `foreman respond ID --approve \| --reject [--note TEXT] \| --answer TEXT [--who NAME]` | answer one question |
 | `foreman resume RUN_ID` | continue from the last checkpoint. If classification never finished, classify again |
+| `foreman logs [RUN_ID] [--problems] [--cost]` | what Foreman did. Without a run id: every run with its type, status and cost. With one: its timeline. `--problems` keeps only failed attempts, retries, stops and rollbacks; `--cost` adds what each agent call cost |
 
 All commands accept `--runs-dir` (default: `runs/` in the Foreman folder).
 
 ### When a run stops
 
 A run ends `safe_stopped` with a reason when a stage fails three times, validation fails three times (the branch is rolled back to the approved commit), the budget is spent, a PR is closed unmerged, or no one answers for 24 hours. The reason is printed and posted on the issue. Fix the cause (for example raise `budget_usd` in `runs/<id>/run.json`, or merge the PR), then `foreman resume <id>`.
+
+### Checking what happened
+
+Foreman records everything it does, in four places:
+
+| Where | What you see | How |
+|---|---|---|
+| the output of `foreman run` (in Claude Code, the background command's output) | live progress lines: `[classify] classified: ...`, `[implement] stage_passed`, `[reproduce] attempt_failed: ...`, `[open_pr] pr_opened: <url>`, `[run] safe_stop: ...` | read the output of the run |
+| the audit trail | every event with its time, stage, attempt and reason, and what each agent call cost | `foreman logs` and `foreman logs <run id> [--problems] [--cost]` |
+| the issue thread on GitHub | a human-readable trail: classification, the proposal, validation results, the PR, merge, the observe verdict | open the issue |
+| `runs/foreman.db` in the Foreman folder | the same audit trail as raw tables `audit_events`, `cost_events`, `human_requests` | any SQLite tool, or Python's `sqlite3` module |
+
+```
+$ foreman logs
+20261029-101500-ab12  2026-10-29T07:48:47  bugfix   safe_stopped   5 events  $0.36
+
+$ foreman logs 20261029-101500-ab12 --problems
+07:48:47  reproduce          attempt_failed     reason=No failing test, no fix
+07:48:47  run                safe_stop          reason=budget exceeded
+```
+
+When a run misbehaves, start with `foreman logs <run id> --problems`: it shows which stage failed, why, and how many times. Agent output is not stored: a failed attempt keeps its reason, not the model's full reply. `runs/<run id>/run.json` holds the run's settings and chosen type.
 
 ## 4. How it works
 

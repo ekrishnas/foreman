@@ -4,6 +4,7 @@
     foreman pending [--run ID] [--wait SECONDS]  questions waiting for a human
     foreman respond 7 --approve                  answer one
     foreman resume RUN_ID                        continue a safe-stopped or crashed run
+    foreman logs [RUN_ID] [--problems] [--cost]  what happened: list runs, or one run's timeline
 """
 import argparse
 import getpass
@@ -105,6 +106,47 @@ def cmd_respond(args) -> int:
     return 0
 
 
+PROBLEMS = {"attempt_failed", "retry", "safe_stop", "pr_closed", "rollback"}
+QUIET = {"commit", "findings", "results", "comments", "wait_s"}  # details too noisy for the timeline
+STATUS = {"run_completed": "completed", "safe_stop": "safe_stopped"}
+
+
+def describe(details: dict) -> str:
+    """One short line from an event's details: type=bugfix; reason=...; url=..."""
+    text = "; ".join(f"{k}={str(v).splitlines()[0]}" for k, v in details.items() if v not in ("", None, [], {}) and k not in QUIET)
+    return text if len(text) <= 200 else text[:197] + "..."
+
+
+def cmd_logs(args) -> int:
+    """What Foreman did: list the runs, or show one run's timeline."""
+    store = open_store(args)
+    if not args.run:
+        runs = store.runs()
+        if not runs:
+            print("no runs recorded yet")
+        for r in runs:
+            last = store.audit_events(r["run_id"])[-1]
+            cost = sum(c.cost_usd for c in store.cost_events(run_id=r["run_id"]))
+            status = STATUS.get(last.event, "running or interrupted")
+            print(f"{r['run_id']}  {r['started'][:19]}  {last.workflow:<18} {status:<22} {r['events']:>3} events  ${cost:.2f}")
+        return 0
+    events = store.audit_events(args.run)
+    if not events:
+        raise CliError(f"no events recorded for run {args.run}")
+    for e in events:
+        if args.problems and e.event not in PROBLEMS:
+            continue
+        attempt = f" #{e.attempt}" if e.attempt and e.event in PROBLEMS | {"stage_passed"} else ""
+        print(f"{e.ts[11:19]}  {e.stage:<18} {e.event + attempt:<18} {describe(e.details)}".rstrip())
+    if args.cost:
+        rows = store.cost_events(run_id=args.run)
+        print("\nstage                agent                  try  tokens in/out   usd")
+        for c in rows:
+            print(f"{c.stage:<20} {c.agent:<22} {c.attempt:>3}  {c.input_tokens:>6}/{c.output_tokens:<6} {c.cost_usd:>6.2f}")
+        print(f"total ${sum(c.cost_usd for c in rows):.2f}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--runs-dir", default=str(ROOT / "runs"), help="where run files and the SQLite database live")
@@ -137,6 +179,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--answer", help="the answer, for a question")
     p.add_argument("--who", default="", help="defaults to the current user")
     p.set_defaults(func=cmd_respond)
+
+    p = sub.add_parser("logs", parents=[common], help="what Foreman did: list runs, or show one run's timeline")
+    p.add_argument("run", nargs="?", help="a run id; without one, list all runs")
+    p.add_argument("--problems", action="store_true", help="only failed attempts, retries, stops and rollbacks")
+    p.add_argument("--cost", action="store_true", help="also show what each agent call cost")
+    p.set_defaults(func=cmd_logs)
     return parser
 
 
