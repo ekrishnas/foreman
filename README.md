@@ -8,6 +8,20 @@ The full design is in [DESIGN.md](DESIGN.md). This README is the practical guide
 
 **Status:** the orchestration logic is covered by an offline test suite (see [Tests](#8-tests)). It has **not** yet been run against real Claude, GitHub and OpenSpec; expect to tune prompts and fix small integration details on the first real runs.
 
+## Quick start
+
+Open Claude Code in your product's repository, copy the prompt below (use the copy button at the top right of the box), and paste it. Claude installs the Foreman skill into the repo and does the setup, asking before it clones, installs or creates anything.
+
+```text
+Set up Foreman in this repository.
+
+1. Install the skill. Download https://raw.githubusercontent.com/ekrishnas/foreman/main/skill/foreman/SKILL.md and save it as .claude/skills/foreman/SKILL.md in this repository, creating the folders (use curl, or Invoke-WebRequest on Windows). Then read the file.
+2. Follow that file's "Setup only" instructions now: do its steps 1 to 6 (find or clone Foreman, set up OpenSpec, check my issue tracker, GitHub login and repo access, create .foreman/target.yaml, and commit the setup), obeying its rules. Ask me before you clone, install or create anything, and stop after step 6. Do not start a run.
+3. When it is done, tell me what is ready and that I start work with: /foreman work on #<issue number>
+```
+
+When it finishes, start work with `/foreman work on #1` (see [Using it](#3-using-it)). You need `uv` and Claude Code (logged in); the prompt checks for everything else. The prompt downloads the skill from this repository, so read [`skill/foreman/SKILL.md`](skill/foreman/SKILL.md) first if you want to know exactly what Claude will be told to do. Setup is described step by step in [Setup](#2-setup), including doing it by hand.
+
 ---
 
 ## 1. The seven kinds of work
@@ -30,7 +44,7 @@ Code double-checks the classifier: `new_implementation` is refused if the repo a
 
 **Per machine, once:** install `uv` and Claude Code (logged in). Everything else is checked and set up by the skill the first time you use it.
 
-**Per product repo, once:** copy the skill into the repo and commit it.
+**Per product repo, once:** paste the [Quick start](#quick-start) prompt, or do the first step by hand: copy the skill into the repo and commit it.
 
 ```bash
 # from the product repo (macOS/Linux)

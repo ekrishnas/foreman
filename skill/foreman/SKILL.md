@@ -1,7 +1,7 @@
 ---
 name: foreman
 description: Hand a GitHub issue to Foreman, a governed orchestrator that classifies the work, runs the matching workflow (new implementation, change to existing code, bugfix, test improvement, doc improvement, spike, or a post-deploy log check) and opens a pull request. Use only when the developer types /foreman.
-argument-hint: work on #1 | fix #3 | #1 is deployed, check the logs
+argument-hint: setup | work on #1 | fix #3 | #1 is deployed, check the logs
 disable-model-invocation: true
 allowed-tools: Bash(uv run:*), Bash(git status:*), Bash(git remote:*), Bash(git rev-parse:*), Bash(gh auth status:*), Bash(openspec --version:*)
 ---
@@ -11,6 +11,8 @@ allowed-tools: Bash(uv run:*), Bash(git status:*), Bash(git remote:*), Bash(git 
 You are the front door to **Foreman**. Foreman is a separate tool (its own repository) that turns a GitHub issue into a reviewed pull request, using agents inside strict boundaries. It works on the product repository you are standing in. Your job: get everything Foreman needs in place, start it, pass its questions to the developer, and report. You never do the engineering work yourself.
 
 The developer said: **$ARGUMENTS**
+
+**Setup only.** If the developer asked only for setup (`/foreman setup`, a request to set Foreman up, or no issue to work on), do steps 1 to 6 and then **stop**: tell them in two or three lines what is ready, and that they start work with `/foreman work on #<issue number>`. Do not start a run.
 
 Foreman repository to clone when the developer has none: `FOREMAN_REPO_URL = https://github.com/ekrishnas/foreman.git` (edit this line if Foreman lives elsewhere).
 
@@ -113,7 +115,7 @@ Foreman refuses to start a branch from a dirty working tree, and anything uncomm
 
 ## 7. Start the run
 
-Keep the developer's sentence exactly as typed: Foreman's classifier reads it ("is deployed, check the logs" means something different from "work on"). You do not choose the kind of work; the classifier does. Find the issue number in what they typed (`#1`, `issue 1`, `1`); ask if there is none.
+(A setup-only request ends at step 6.) Keep the developer's sentence exactly as typed: Foreman's classifier reads it ("is deployed, check the logs" means something different from "work on"). You do not choose the kind of work; the classifier does. Find the issue number in what they typed (`#1`, `issue 1`, `1`); ask if there is none.
 
 Run, **in the background**:
 
