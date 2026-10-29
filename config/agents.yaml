@@ -40,19 +40,19 @@ agents:
     tier: strong
     tools: [Read, Write, openspec_author]
     writable: ["openspec/changes/{change}/**"]
-    context: [requirements, "assumptions?", "clarifications?", "impacted_files?", existing_specs, "reviewer_notes?"]
+    context: [requirements, target_profile, "assumptions?", "clarifications?", "impacted_files?", existing_specs, "reviewer_notes?"]
 
   implementer:
     tier: mid
     tools: [Read, Edit, Write, build_cmd]
     writable: ["{paths.src}"]
-    context: [design, tasks, "reviewer_notes?", "last_failure?"]
+    context: [design, tasks, target_profile, "reviewer_notes?", "last_failure?"]
 
   test_writer:
     tier: mid
     tools: [Read, Edit, Write, test_cmd]
     writable: ["{paths.tests}"]
-    context: [contract, acceptance_criteria, spec_scenarios]
+    context: [contract, acceptance_criteria, spec_scenarios, target_profile]
 
   doc_writer:
     tier: small

@@ -322,6 +322,13 @@ dependency_manifests: ["**/*.csproj"]
 protected: ["**/Migrations/**"]
 ```
 
+Things to get right in a profile:
+
+- **Keep the `/**` on every path.** `src/**` matches the files under `src`; `src/` matches nothing, and every write would be refused.
+- **Agents may only write inside `src`, `tests` and `docs`.** A solution file, `Dockerfile` or `docker-compose.yml` at the repo root would be refused, so keep them inside `src`. `.gitignore` is never touched by agents: the setup makes sure it ignores build output and `logs/`.
+- **The commands must work from the repo root, and for a product with no code yet they must name where the first projects will live**, for example `dotnet build src/MyApp.Api` and `dotnet test tests/MyApp.Tests` rather than a bare `dotnet build` (which needs one project or solution in the root folder). The architect sees the profile and plans projects where the commands expect them.
+- **The toolchain must really be installed.** For .NET that means an SDK (`dotnet --list-sdks` must list one), not only a runtime; if the tests use Testcontainers or a compose database, Docker must be running. The skill checks both during setup.
+
 ## 7. Where things end up
 
 | What | Where |

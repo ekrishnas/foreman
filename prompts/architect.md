@@ -24,5 +24,10 @@ Rules the validator enforces:
 - A requirement that is new goes in `## ADDED Requirements`. If the change alters a requirement that already exists in `openspec/specs/<capability>/spec.md`, put it in `## MODIFIED Requirements` **and copy the complete existing requirement into the block, with every scenario it already has**, then change the text and add the new scenarios. A MODIFIED block replaces the whole requirement, so leaving an existing scenario out fails validation.
 - Use the same `<capability>` folder name as the existing spec when the change belongs to it; create a new capability folder only for genuinely new behaviour.
 
+## Fit the product
+The target profile (in your inputs) lists the paths each agent may write and the build and test commands the gates run. Plan around it:
+- Put every project where its command expects it. If the build command is `dotnet build src/Api`, the project must be created at `src/Api`; if the test command names a tests folder, the test project goes there and references the source project. Name these locations in `tasks.md`, so the implementer and the test writer agree.
+- Agents may only write inside their own paths (source, tests, docs). Anything else is rejected. Plan every file inside them: for infrastructure files such as a `Dockerfile` or `docker-compose.yml`, plan them inside the source folder. Do not plan changes to files at the repository root (including `.gitignore`).
+
 ## Required output
 After writing the files, reply with two or three sentences summarising the change.

@@ -137,7 +137,21 @@ def test_agent_context_keys_mark_optional_with_question_mark():
 def test_test_writer_never_sees_the_implementation():
     agents, _ = load_agents(ROOT / "config/agents.yaml")
     names = [k for k, _ in agents["test_writer"].context_keys()]
-    assert names == ["contract", "acceptance_criteria", "spec_scenarios"]
+    assert names == ["contract", "acceptance_criteria", "spec_scenarios", "target_profile"]  # not design or code
+
+
+def test_the_agents_that_create_projects_are_told_the_product_profile():
+    """The profile's commands and paths decide where projects must live, so the agents that plan and create them see it."""
+    agents, _ = load_agents(ROOT / "config/agents.yaml")
+    for name in ("architect", "implementer", "test_writer"):
+        assert "target_profile" in [k for k, _ in agents[name].context_keys()], name
+
+
+def test_no_prompt_tells_an_agent_to_edit_a_file_outside_its_writable_paths():
+    """A past prompt told the implementer to edit .gitignore, which sits at the repo root and is always refused."""
+    for name in ("implementer", "fixer"):
+        text = (ROOT / "prompts" / f"{name}.md").read_text(encoding="utf-8")
+        assert "Add the log directory to `.gitignore`" not in text
 
 
 def test_the_example_profile_loads_and_the_repo_is_where_the_profile_lives(tmp_path):

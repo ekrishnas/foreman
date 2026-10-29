@@ -26,4 +26,4 @@ Your last section must say how this code logs, so that someone can later check f
 - Success: <one example log line that shows the feature working>
 - Errors: <the strings or patterns that show it failing>
 ```
-Make the code actually write those lines. Add the log directory to `.gitignore` if it is not there.
+Make the code actually write those lines. Do not edit `.gitignore` or any file outside your writable paths: the log folder is already ignored by the repository's setup. Build output (`bin/`, `obj/` and the like) is ignored the same way.

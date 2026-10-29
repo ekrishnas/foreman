@@ -104,13 +104,19 @@ Foreman knows nothing about any product until `PRODUCT/.foreman/target.yaml` exi
    protected: ["**/Migrations/**"]       # so does anything under these
    ```
    `commands.build` and `commands.test` must work from the repo root and exit non-zero on failure. `examples/target.yaml` in the Foreman folder is the same template.
+   Rules for a good profile:
+   - Keep the `/**` on every path (`src/**`, not `src/`): a path without it matches nothing, and every write would be refused.
+   - Agents may only write inside `src`, `tests` and `docs`, so the profile must make the product fit in them. Anything else at the repo root, such as a solution file, `Dockerfile` or `docker-compose.yml`, would be refused: keep those inside `src`.
+   - **No code yet (greenfield):** the commands must describe where the first projects *will* live, and must work from the repo root once they exist. Prefer commands that name a project folder over ones that need a root-level solution file (for .NET: `dotnet build src/<Name>.Api` and `dotnet test tests/<Name>.Tests`, not a bare `dotnet build`). Tell the developer the names you chose, and offer to add them to the issue.
 4. Write the confirmed file to `PRODUCT/.foreman/target.yaml`.
+5. **Check the toolchain really works**, now, not in the middle of a run. Run the profile's tool in its version form (for .NET, `dotnet --list-sdks` must list an SDK: a runtime alone cannot build; for Node, `node --version`; and so on). If the product's tests need Docker (Testcontainers, a database in compose), check `docker info` works; if the daemon is off, tell the developer to start Docker. Offer the install command for anything missing (for .NET on Windows: `winget install Microsoft.DotNet.SDK.9`) and wait.
+6. **Make sure `.gitignore` is right.** Agents cannot edit it. It must exist and ignore the stack's build output (for .NET: `dotnet new gitignore`, which covers `bin/` and `obj/`) and `logs/`, where Foreman asks agents to write their logs. Add what is missing; it is committed in step 6.
 
 ## 6. Commit the setup
 
 Foreman refuses to start a branch from a dirty working tree, and anything uncommitted would look like an agent's change. Run `git status --porcelain`.
 
-- If the only changes are setup files (`.claude/` including OpenSpec's skills and commands, `.foreman/`, `openspec/`), tell the developer which ones and ask permission to commit them ("Add Foreman and OpenSpec setup"). Commit on the current branch; do not push.
+- If the only changes are setup files (`.claude/` including OpenSpec's skills and commands, `.foreman/`, `openspec/`, `.gitignore`), tell the developer which ones and ask permission to commit them ("Add Foreman and OpenSpec setup"). Commit on the current branch; do not push.
 - If there are other uncommitted changes, tell the developer to commit or stash them first. (A log check, "is deployed, check the logs", does not need a clean tree.)
 
 ## 7. Start the run
