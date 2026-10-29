@@ -395,7 +395,7 @@ Some tests assume a POSIX shell (`sleep`, `cat`, stub scripts); on native Window
 ## 9. Improvements for later
 
 Left out of this version to keep it small enough to read in an afternoon:
-
+- **Provider Agnostic Behavior** Make it work on any platform irrespective of `claude code`, `codex`, `opencode`, `cursor` etc.
 - **Azure DevOps and Jira.** Today only GitHub Issues and GitHub pull requests work. The skill already recognises the other trackers and stops with a clear message. Supporting them means splitting the GitHub adapter into a *tracker* (read a story, comment) and a *code host* (push, open and track PRs), then adding an adapter for each, using `az boards` / `az repos` and a Jira CLI.
 - **Drive OpenSpec's own skills** (`/opsx:propose`, `/opsx:apply`, `/opsx:verify`) from the agents, once they are shown to work under `claude -p`. Today the agents use only OpenSpec's CLI helpers.
 - **Skip unchanged stages** after a failed validation (hash each stage's inputs). Today a validation failure re-runs implement, tests and docs.
