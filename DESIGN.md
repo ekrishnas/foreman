@@ -25,7 +25,7 @@ Claude polls  foreman pending  -> shows the question to the developer -> foreman
 PR opened -> developer reviews and merges on GitHub -> run completes -> Claude reports
 ```
 
-The front door is a Claude Code skill (`.claude/skills/foreman/SKILL.md` in the product repo, copied from `skill/foreman/SKILL.md` in the Foreman repo). It is a prompt, not code. On the first use in a product it:
+The front door is a Claude Code skill (`.agents/skills/foreman/SKILL.md` in the product repo, copied from `skill/foreman/SKILL.md` in the Foreman repo). It is a prompt, not code. On the first use in a product it:
 
 1. finds the Foreman checkout, or asks where it is, or asks permission to clone it outside the product repo and installs its dependencies;
 2. sets up OpenSpec: checks the CLI (installing the pinned version with permission) and runs `openspec init --tools claude` (non-interactive) if the repo has no `openspec/` folder;
@@ -308,7 +308,7 @@ protected: ["**/Migrations/**"]
 requires: [docker]                   # optional: only if the tests need Docker
 ```
 
-`paths` scope what each agent may write; the optional `ci` and `ignore` paths let the implementer write CI workflows and the implementer and test writer add `.gitignore` entries (a path the profile does not define is simply not writable, and every change to them needs human approval); `requires: [docker]` makes a run check Docker before it starts; `commands.build` and `commands.test` become the scoped `Bash(...)` permissions of the code-writing agents and are what the gates run; `dependency_manifests` and `protected` decide what needs human approval. `examples/target.yaml` in the Foreman repo is a template. Agents may not write `.foreman/` or `.claude/`: they are outside every writable path.
+`paths` scope what each agent may write; the optional `ci` and `ignore` paths let the implementer write CI workflows and the implementer and test writer add `.gitignore` entries (a path the profile does not define is simply not writable, and every change to them needs human approval); `requires: [docker]` makes a run check Docker before it starts; `commands.build` and `commands.test` become the scoped `Bash(...)` permissions of the code-writing agents and are what the gates run; `dependency_manifests` and `protected` decide what needs human approval. `examples/target.yaml` in the Foreman repo is a template. Agents may not write `.foreman/`, `.agents/` or `.claude/`: they are outside every writable path.
 
 ## 16. Infrastructure
 
@@ -331,14 +331,14 @@ foreman/                 engine.py, cli.py
   reports/               pr body and cost table
   workflows/             nodes (shared), route, and one file per graph
 config/agents.yaml       prompts/ (one file per agent)
-skill/foreman/SKILL.md   the /foreman skill, copied into each product repo's .claude/skills/foreman/
+skill/foreman/SKILL.md   the /foreman skill, copied into each product repo's .agents/skills/foreman/
 examples/                a template profile and two sample issues
 tests/                   unit and end-to-end tests; doubles/ has the fakes
 runs/                    SQLite database and per-run files (git-ignored)
 DESIGN.md  README.md
 ```
 
-Product repo (what the skill adds): `.claude/skills/foreman/SKILL.md`, `.foreman/target.yaml`, `openspec/`.
+Product repo (what the skill adds): `.agents/skills/foreman/SKILL.md`, `.foreman/target.yaml`, `openspec/`.
 
 ## 19. Limitations and later improvements
 

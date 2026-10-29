@@ -114,6 +114,10 @@ def test_an_unreachable_remote_is_an_error_not_a_crash(world):
 
 # ---- the product's copy of the skill ----
 
+def test_the_skill_is_installed_under_dot_agents():
+    assert INSTALLED_SKILL == ".agents/skills/foreman/SKILL.md"
+
+
 def test_a_product_without_the_skill_says_so(world, tmp_path):
     assert skill_status(tmp_path / "product", root=world.checkout) == "not installed"
 

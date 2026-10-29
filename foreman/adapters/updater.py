@@ -9,7 +9,7 @@ from foreman.adapters.gitops import GitRepo, RepoError
 from foreman.core.config import PROFILE
 
 SKILL = "skill/foreman/SKILL.md"  # in the Foreman repo
-INSTALLED_SKILL = ".claude/skills/foreman/SKILL.md"  # in a product repo
+INSTALLED_SKILL = ".agents/skills/foreman/SKILL.md"  # in a product repo
 DEPENDENCY_FILES = {"pyproject.toml", "uv.lock"}
 # Profile settings added after the first release, newest last: what a developer may want to switch on.
 NEW_SETTINGS = {

@@ -188,7 +188,7 @@ def test_a_failed_validation_comment_shows_the_detail_of_each_failure(make_run):
 def test_validate_tolerates_the_developers_setup_commits_on_the_branch(make_run, repo):
     run = make_run(AGENTS)
     make_valid_change(repo)
-    for rel in (".claude/skills/foreman/SKILL.md", ".foreman/target.yaml"):
+    for rel in (".agents/skills/foreman/SKILL.md", ".foreman/target.yaml"):
         (repo.path / rel).parent.mkdir(parents=True, exist_ok=True)
         (repo.path / rel).write_text("setup\n")
     repo.commit("work")
@@ -200,7 +200,7 @@ def test_validate_tolerates_the_developers_setup_commits_on_the_branch(make_run,
 def test_an_agent_still_cannot_write_the_skill_or_the_profile(make_run):
     run = make_run(AGENTS)
     writable = writable_for(run, AGENTS["implementer"], {"change_id": "c-1"})
-    changes = [Change("M", ".claude/skills/foreman/SKILL.md"), Change("M", ".foreman/target.yaml")]
+    changes = [Change("M", ".agents/skills/foreman/SKILL.md"), Change("M", ".foreman/target.yaml")]
     findings = check_changes(changes, "", writable, run.target)
     assert [f.kind for f in findings if f.blocking] == ["path", "path"]
 

@@ -2,7 +2,7 @@
 
 A governed agentic SDLC orchestrator. In Claude Code, inside your product's repository, you type `/foreman work on #1`; Foreman reads GitHub issue #1, a classifier agent decides what kind of work it is, and the matching workflow graph runs. LLM agents do the work inside defined boundaries; Foreman owns control: classification, ordering, gates, approvals, policy, retries, rollback, cost and audit. It stops and asks you wherever a decision is yours, and it ends with a pull request for you to review and merge.
 
-**Foreman is product-agnostic and lives apart from your product.** You clone Foreman once. A small *skill* that you drop into your product repo (`.claude/skills/foreman/SKILL.md`) drives it, and the only thing Foreman learns about a product is one file inside that product's repo, `.foreman/target.yaml` (build and test commands, where code, tests and docs live). Foreman's own code and prompts name no product.
+**Foreman is product-agnostic and lives apart from your product.** You clone Foreman once. A small *skill* that you drop into your product repo (`.agents/skills/foreman/SKILL.md`) drives it, and the only thing Foreman learns about a product is one file inside that product's repo, `.foreman/target.yaml` (build and test commands, where code, tests and docs live). Foreman's own code and prompts name no product.
 
 The full design is in [DESIGN.md](DESIGN.md) and the workflow graphs are drawn in [WORKFLOWS.md](WORKFLOWS.md). This README is the practical guide: how to use it, what every file does, and which setting changes which behaviour.
 
@@ -15,7 +15,7 @@ Open Claude Code in your product's repository, copy the prompt below (use the co
 ```text
 Set up Foreman in this repository.
 
-1. Install the skill. Download https://raw.githubusercontent.com/ekrishnas/foreman/main/skill/foreman/SKILL.md and save it as .claude/skills/foreman/SKILL.md in this repository, creating the folders (use curl, or Invoke-WebRequest on Windows). Then read the file.
+1. Install the skill. Download https://raw.githubusercontent.com/ekrishnas/foreman/main/skill/foreman/SKILL.md and save it as .agents/skills/foreman/SKILL.md in this repository, creating the folders (use curl, or Invoke-WebRequest on Windows). Then read the file.
 2. Follow that file's "Setup only" instructions now: do its steps 1 to 6 (find or clone Foreman, set up OpenSpec, check my issue tracker, GitHub login and repo access, create .foreman/target.yaml, and commit the setup), obeying its rules. Ask me before you clone, install or create anything, and stop after step 6. Do not start a run.
 3. When it is done, tell me what is ready and that I start work with: /foreman work on #<issue number>
 ```
@@ -50,13 +50,13 @@ Each graph is drawn in [WORKFLOWS.md](WORKFLOWS.md).
 
 ```bash
 # from the product repo (macOS/Linux)
-mkdir -p .claude/skills/foreman
-curl -o .claude/skills/foreman/SKILL.md https://raw.githubusercontent.com/ekrishnas/foreman/main/skill/foreman/SKILL.md
+mkdir -p .agents/skills/foreman
+curl -o .agents/skills/foreman/SKILL.md https://raw.githubusercontent.com/ekrishnas/foreman/main/skill/foreman/SKILL.md
 ```
 ```powershell
 # from the product repo (Windows PowerShell)
-New-Item -ItemType Directory -Force .claude\skills\foreman | Out-Null
-Invoke-WebRequest https://raw.githubusercontent.com/ekrishnas/foreman/main/skill/foreman/SKILL.md -OutFile .claude\skills\foreman\SKILL.md
+New-Item -ItemType Directory -Force .agents\skills\foreman | Out-Null
+Invoke-WebRequest https://raw.githubusercontent.com/ekrishnas/foreman/main/skill/foreman/SKILL.md -OutFile .agents\skills\foreman\SKILL.md
 ```
 (Or copy `skill/foreman/SKILL.md` from a Foreman checkout.) The clone URL near the top of the skill (`FOREMAN_REPO_URL`) is the one place to change if Foreman lives somewhere else.
 
@@ -269,7 +269,7 @@ Foreman keeps control of the sequence. Its agents know OpenSpec and use its help
 
 | File | What it does |
 |---|---|
-| `.claude/skills/foreman/SKILL.md` | the skill, copied from `skill/foreman/SKILL.md` |
+| `.agents/skills/foreman/SKILL.md` | the skill, copied from `skill/foreman/SKILL.md` |
 | `.foreman/target.yaml` | the product profile: see [below](#target-profile) |
 | `openspec/` | created by `openspec init`; `specs/` is what the system does today, `changes/` holds proposed changes, `config.yaml` can carry project constraints |
 | `.claude/skills/openspec-*`, `.claude/commands/opsx/` | OpenSpec's own Claude Code skills and commands (`/opsx:explore`, `/opsx:propose`, `/opsx:apply`, `/opsx:archive`, ...), added by `openspec init` |
