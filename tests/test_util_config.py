@@ -191,3 +191,24 @@ def test_every_workflow_the_router_can_choose_has_a_graph_and_the_graphs_are_all
 def test_every_agent_has_a_prompt_file_and_every_prompt_file_an_agent():
     agents, _ = load_agents(ROOT / "config/agents.yaml")
     assert {p.stem for p in (ROOT / "prompts").glob("*.md")} == set(agents)
+
+
+def test_ci_files_and_ignore_entries_are_written_only_by_the_agents_that_need_them():
+    agents, _ = load_agents(ROOT / "config/agents.yaml")
+    assert {"{paths.ci}", "{paths.ignore}"} <= set(agents["implementer"].writable)
+    assert "{paths.ignore}" in agents["test_writer"].writable and "{paths.ci}" not in agents["test_writer"].writable
+    others = [a for n, a in agents.items() if n not in ("implementer", "test_writer")]
+    assert not [a.name for a in others if {"{paths.ci}", "{paths.ignore}"} & set(a.writable)]
+
+
+def test_the_example_profile_lets_agents_write_ci_files_and_ignore_entries():
+    t = load_target(ROOT / "examples/target.yaml")
+    assert t.paths["ci"] == ".github/**" and t.paths["ignore"] == ".gitignore"
+    assert t.requires == []  # docker is an opt-in line, commented out in the template
+
+
+def test_a_profile_without_requirements_requires_nothing(tmp_path):
+    (tmp_path / ".foreman").mkdir()
+    (tmp_path / ".foreman/target.yaml").write_text(
+        "paths: {src: 'src/**', tests: 'tests/**', docs: 'docs/**'}\ncommands: {build: b, test: t}\n", encoding="utf-8")
+    assert load_target(tmp_path / ".foreman/target.yaml").requires == []

@@ -7,8 +7,14 @@ paths:                                # where things live. Each agent may only w
   src: "src/**"
   tests: "tests/**"
   docs: "docs/**"
+  ci: ".github/**"                    # optional: lets the implementer write CI workflows and Dependabot config
+  ignore: ".gitignore"                # optional: lets the implementer and test writer add ignore entries (e.g. *.received.*)
+                                      # Every change to these two needs your approval, and an agent can only write a path
+                                      # that is listed here. Delete a line to take that access away.
 commands:                             # the gates run these, and they are the only commands code-writing agents may use
   build: dotnet build
   test: dotnet test
 dependency_manifests: ["**/*.csproj"] # a change to these needs a human's approval
 protected: ["**/Migrations/**"]       # so does a change under these
+# requires: [docker]                  # the tests need a running Docker daemon (Testcontainers, a database in compose):
+                                      # a run refuses to start, with a fix, while Docker is not running

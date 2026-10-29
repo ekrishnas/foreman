@@ -4,6 +4,8 @@ import time
 import pytest
 
 from foreman.adapters.workers import WorkerResult
+from dataclasses import replace
+
 from foreman.core.config import Agent
 from foreman.core.runner import SafeStop, Stage, run_stage
 from tests.doubles.human import ScriptedHuman
@@ -180,3 +182,20 @@ def test_concurrent_stages_do_not_mix_their_diffs(make_run):
     log = run.repo.git("log", "--name-only", "--format=%s", "-2")
     assert "a/x.py" in log and "b/y.py" in log
     assert run.repo.git("show", "--name-only", "--format=", "HEAD").count("/") == 1
+
+
+def test_a_ci_workflow_the_profile_allows_is_approved_by_a_human_before_it_is_committed(make_run):
+    agent = Agent("implementer", "mid", ["Write"], ["{paths.src}", "{paths.ci}"], ["design"])
+    run = make_run({"implementer": agent}, {"implementer": writes(".github/workflows/ci.yml")},
+                   human=ScriptedHuman({"high_impact": ["approve"]}))
+    run.target = replace(run.target, paths={**run.target.paths, "ci": ".github/**"})
+    run_stage(run, stage(), CTX)
+    assert [a.details["approved"] for a in events(run, "approval")] == [True]
+    assert (run.repo.path / ".github/workflows/ci.yml").exists() and run.repo.changes() == []
+
+
+def test_a_ci_workflow_is_refused_when_the_profile_does_not_name_a_ci_path(make_run):
+    agent = Agent("implementer", "mid", ["Write"], ["{paths.src}", "{paths.ci}"], ["design"])
+    run = make_run({"implementer": agent}, {"implementer": writes(".github/workflows/ci.yml")})
+    with pytest.raises(SafeStop, match="outside the agent's writable paths"):
+        run_stage(run, stage(), CTX)

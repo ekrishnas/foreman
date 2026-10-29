@@ -278,7 +278,7 @@ Foreman keeps control of the sequence. Its agents know OpenSpec and use its help
 |---|---|
 | which model an agent uses | `config/agents.yaml`: the agent's `tier` (small, mid, strong), or the `models:` map at the top |
 | which tools an agent may use | `config/agents.yaml`: `tools` (`build_cmd`/`test_cmd` expand to the commands in the product profile) |
-| where an agent may write | `config/agents.yaml`: `writable` (globs; `{paths.src}`, `{paths.tests}`, `{paths.docs}`, `{change}`, `{run_id}`, `{option}`) |
+| where an agent may write | `config/agents.yaml`: `writable` (globs; `{paths.src}`, `{paths.tests}`, `{paths.docs}`, the optional `{paths.ci}` and `{paths.ignore}`, `{change}`, `{run_id}`, `{option}`) |
 | what an agent is shown | `config/agents.yaml`: `context` (a trailing `?` makes a key optional). New keys must be put in the context by a node, or be a provider in `core/context.py` |
 | what an agent is told, or the format it must reply in | `prompts/<agent>.md`. **If you change an output format, change its gate too** (the gates are in `workflows/*.py`) |
 | how implementers must report logging | `prompts/implementer.md`, `prompts/fixer.md` and `gate_observability` in `workflows/nodes.py` |
@@ -292,7 +292,8 @@ Foreman keeps control of the sequence. Its agents know OpenSpec and use its help
 | To change... | Edit |
 |---|---|
 | build and test commands | `commands.build`, `commands.test` |
-| where source, tests, docs live | `paths.src`, `paths.tests`, `paths.docs` |
+| where source, tests, docs live | `paths.src`, `paths.tests`, `paths.docs`; optionally `paths.ci` (`.github/**`) and `paths.ignore` (`.gitignore`) |
+| what the tests need on this machine | `requires: [docker]`: a run refuses to start, with a fix, while Docker is not running |
 | what needs human approval | `dependency_manifests` (e.g. `**/*.csproj`), `protected` (e.g. `**/Migrations/**`); built-in rules for deleted tests and CI/config files are in `core/policy.py` |
 | the GitHub repo name used if Foreman has to create the repo | `name` |
 | which repo a run works on | `--repo PATH` on `foreman run` (the skill passes the repo Claude is open in) |
@@ -338,20 +339,21 @@ Foreman keeps control of the sequence. Its agents know OpenSpec and use its help
 # <product repo>/.foreman/target.yaml
 name: my-app                        # GitHub repo name if Foreman has to create one; defaults to the folder name
 spec_format: openspec
-paths: { src: "src/**", tests: "tests/**", docs: "docs/**" }
+paths: { src: "src/**", tests: "tests/**", docs: "docs/**", ci: ".github/**", ignore: ".gitignore" }  # ci and ignore are optional
 commands:
   build: dotnet build
   test: dotnet test
 dependency_manifests: ["**/*.csproj"]
 protected: ["**/Migrations/**"]
+requires: [docker]                  # optional: only if the tests need Docker
 ```
 
 Things to get right in a profile:
 
 - **Keep the `/**` on every path.** `src/**` matches the files under `src`; `src/` matches nothing, and every write would be refused.
-- **Agents may only write inside `src`, `tests` and `docs`.** A solution file, `Dockerfile` or `docker-compose.yml` at the repo root would be refused, so keep them inside `src`. `.gitignore` is never touched by agents: the setup makes sure it ignores build output and `logs/`.
+- **Agents may only write inside `src`, `tests` and `docs`,** plus `ci` and `ignore` if the profile lists them. A solution file, `Dockerfile` or `docker-compose.yml` at the repo root would be refused, so keep them inside `src`. `ci` (`.github/**`) lets the implementer write CI workflows and Dependabot config; `ignore` (`.gitignore`) lets the implementer and test writer add ignore entries, such as a snapshot library's `*.received.*`. Each such change pauses for your approval like any CI or config change, and without the line the agent cannot write that path at all. The setup still makes sure `.gitignore` covers build output and `logs/`.
 - **The commands must work from the repo root, and for a product with no code yet they must name where the first projects will live**, for example `dotnet build src/MyApp.Api` and `dotnet test tests/MyApp.Tests` rather than a bare `dotnet build` (which needs one project or solution in the root folder). The architect sees the profile and plans projects where the commands expect them.
-- **The toolchain must really be installed.** For .NET that means an SDK (`dotnet --list-sdks` must list one), not only a runtime; if the tests use Testcontainers or a compose database, Docker must be running. The skill checks both during setup.
+- **The toolchain must really be installed.** For .NET that means an SDK (`dotnet --list-sdks` must list one), not only a runtime; if the tests use Testcontainers or a compose database, Docker must be running: put `requires: [docker]` in the profile and every run checks it first and stops with a fix if it is off. The skill checks both during setup.
 
 ## 7. Where things end up
 

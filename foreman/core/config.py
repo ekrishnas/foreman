@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
@@ -27,6 +27,7 @@ class Target:
     commands: dict
     dependency_manifests: list
     protected: list
+    requires: list = field(default_factory=list)  # what the tests need on this machine, e.g. ["docker"]
 
 
 PROFILE = ".foreman/target.yaml"  # where a product describes itself, inside the product repo
@@ -63,6 +64,7 @@ def load_target(path: Path, repo: Path | None = None) -> Target:
     return Target(
         name=d.get("name") or repo.name, repo=repo, paths=d["paths"], commands=d["commands"],
         dependency_manifests=d.get("dependency_manifests", []), protected=d.get("protected", []),
+        requires=d.get("requires", []),
     )
 
 

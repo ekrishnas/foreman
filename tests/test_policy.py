@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 from foreman.adapters.gitops import Change
 from foreman.core.config import load_target
 from foreman.core.policy import check_changes, resolve_writable
@@ -73,3 +75,24 @@ def test_ci_and_docker_config_need_approval():
     ch = [Change("M", ".github/workflows/ci.yml"), Change("M", "Dockerfile")]
     f = check_changes(ch, "", [".github/**", "Dockerfile"], TARGET)
     assert kinds(f) == [("config", False), ("config", False)]
+
+
+def test_paths_the_profile_does_not_define_are_left_out_of_the_writable_list():
+    bare = replace(TARGET, paths={k: v for k, v in TARGET.paths.items() if k in ("src", "tests", "docs")})
+    assert resolve_writable(["{paths.src}", "{paths.ci}", "{paths.ignore}"], bare) == ["src/**"]
+
+
+def test_the_ci_and_ignore_paths_of_the_profile_become_writable():
+    assert resolve_writable(["{paths.src}", "{paths.ci}", "{paths.ignore}"], TARGET) == ["src/**", ".github/**", ".gitignore"]
+
+
+def test_a_ci_workflow_is_blocked_unless_writable_and_even_then_needs_approval():
+    change = [Change("A", ".github/workflows/ci.yml")]
+    assert kinds(check_changes(change, "", SRC, TARGET)) == [("config", False), ("path", True)]
+    assert kinds(check_changes(change, "", SRC + [".github/**"], TARGET)) == [("config", False)]
+
+
+def test_a_gitignore_change_needs_approval_and_is_blocked_unless_writable():
+    change = [Change("M", ".gitignore")]
+    assert kinds(check_changes(change, "", SRC + [".gitignore"], TARGET)) == [("config", False)]
+    assert kinds(check_changes(change, "", SRC, TARGET)) == [("config", False), ("path", True)]

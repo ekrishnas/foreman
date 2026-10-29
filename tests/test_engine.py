@@ -3,7 +3,9 @@ import pytest
 from foreman.adapters.gitops import GitRepo
 from foreman.core.config import PROFILE, RunConfig, load_target
 from foreman.core.util import ShResult
-from foreman.engine import RunRefused, make_run, preflight, prepare_target
+from dataclasses import replace
+
+from foreman.engine import RunRefused, check_requirements, make_run, preflight, prepare_target
 from foreman.state.store import Store
 from tests.conftest import ROOT
 
@@ -104,3 +106,38 @@ def test_preflight_requires_a_logged_in_gh(monkeypatch):
     monkeypatch.setattr("foreman.engine.sh", lambda *a, **k: ShResult(1, "not logged in"))
     with pytest.raises(RunRefused, match="gh auth login"):
         preflight()
+
+
+# ---- what a product's tests need on this machine ----
+
+def needing(*things):
+    return replace(load_target(ROOT / "examples/target.yaml"), requires=list(things))
+
+
+def test_nothing_is_checked_when_the_profile_requires_nothing(monkeypatch):
+    def fail(*a, **k):
+        raise AssertionError("no command should run")
+    monkeypatch.setattr("foreman.engine.sh", fail)
+    check_requirements(needing())
+
+
+def test_docker_that_answers_satisfies_the_requirement(monkeypatch):
+    monkeypatch.setattr("foreman.engine.sh", lambda cmd, **k: ShResult(0, "Server Version: 27"))
+    check_requirements(needing("docker"))
+
+
+def test_docker_that_is_not_running_stops_the_run_before_anything_is_spent(monkeypatch):
+    monkeypatch.setattr("foreman.engine.sh", lambda cmd, **k: ShResult(1, "Cannot connect to the Docker daemon"))
+    with pytest.raises(RunRefused, match="Docker is not running.*start Docker Desktop"):
+        check_requirements(needing("docker"))
+
+
+def test_docker_that_is_not_installed_is_reported_as_such(monkeypatch):
+    monkeypatch.setattr("foreman.engine.sh", lambda cmd, **k: ShResult(127, "docker: not found"))
+    with pytest.raises(RunRefused, match="Docker is not installed"):
+        check_requirements(needing("docker"))
+
+
+def test_an_unknown_requirement_is_refused_rather_than_ignored():
+    with pytest.raises(RunRefused, match="unknown requirement 'kubernetes'"):
+        check_requirements(needing("kubernetes"))

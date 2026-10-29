@@ -55,6 +55,20 @@ def preflight() -> None:
         raise RunRefused("gh is not logged in: run `gh auth login`")
 
 
+def check_requirements(target) -> None:
+    """Fail early when this machine lacks something the product's tests need (the profile's `requires`)."""
+    for need in target.requires:
+        if need != "docker":
+            raise RunRefused(f"unknown requirement '{need}' in the profile (known: docker)")
+        r = sh(["docker", "info"], cwd=ROOT, timeout=30)
+        if r.code == 127:
+            raise RunRefused("Docker is not installed, and the profile says the tests need it. Install Docker, or remove "
+                             "`requires: [docker]` from .foreman/target.yaml if the tests can run without it")
+        if r.code:
+            raise RunRefused("Docker is not running, and the profile says the tests need it: start Docker Desktop "
+                             "(or the Docker daemon) and run again")
+
+
 def prepare_target(target, make_github=GitHub) -> GitRepo:
     """Open the product repo. Give it a first commit if it has none, and create its GitHub repo (PRs required on
     main) if it has no remote."""
@@ -79,6 +93,7 @@ def make_run(config: RunConfig, runs_dir: Path, run_id: str | None, store, reque
         raise RunRefused(f"{profile} not found. It describes the product (build and test commands, paths): run "
                          "/foreman in Claude Code, which creates it, or copy examples/target.yaml there and edit it")
     target = load_target(profile)
+    check_requirements(target)
     repo = prepare_target(target)
     return Run(
         run_id=run_id, issue_id=config.issue, config=config, target=target, agents=agents, models=models, repo=repo,

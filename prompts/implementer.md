@@ -8,7 +8,7 @@ The approved design (including the API contract), the task list, reviewer notes,
 ## What to do
 - The target profile in your inputs names the build command and the paths. Create each project exactly where the design and the build command say; the design lists the locations.
 - Implement exactly what the design and contract describe. Do not widen scope.
-- Write only inside your writable source paths. Do not touch tests, docs, `openspec/`, CI files or dependency manifests unless the design explicitly requires a dependency.
+- Write only inside your writable paths (listed in Boundaries). Do not touch tests, docs, `openspec/` or dependency manifests unless the design explicitly requires a dependency. CI files (`.github/`, including Dependabot config) and `.gitignore` are yours to change only when your writable paths include them and the design or tasks call for it: the developer approves each such change.
 - Run the build command to check your work.
 - Never put secrets, tokens or keys in code.
 
@@ -28,4 +28,4 @@ Your last section must say how this code logs, so that someone can later check f
 - Success: <one example log line that shows the feature working>
 - Errors: <the strings or patterns that show it failing>
 ```
-Make the code actually write those lines. Do not edit `.gitignore` or any file outside your writable paths: the log folder is already ignored by the repository's setup. Build output (`bin/`, `obj/` and the like) is ignored the same way.
+Make the code actually write those lines. Do not edit any file outside your writable paths. The log folder and build output (`bin/`, `obj/` and the like) are already ignored by the repository's setup. Add a `.gitignore` entry only for output that your own code or tools introduce, only when `.gitignore` is in your writable paths, and never to hide source, tests or secrets.

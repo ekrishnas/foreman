@@ -243,7 +243,7 @@ Foreman never prompts on its own terminal, because it is usually started by Clau
 
 - **Gates:** entry and exit on every node.
 - **Human approval:** the proposal, any high-impact diff, and the PR merge. Branch protection on `main` makes it impossible for Foreman to merge its own work.
-- **Policy (on the diff):** writable paths only; secret pattern scan; dependency, migration, deleted-test and CI/config changes need approval; protected paths.
+- **Policy (on the diff):** writable paths only; secret pattern scan; dependency, migration, deleted-test and CI/config changes (`.github/`, `.gitignore`, Dockerfiles, compose files) need approval; protected paths.
 - **Cost budget:** per-run cap (default $10); exceeding it triggers safe-stop before the next agent call.
 - **Retries:** max 2 per stage, previous failure fed back as context.
 - **Review:** a CRITICAL issue from the reviewer fails validation (7.9).
@@ -297,15 +297,16 @@ This is everything Foreman is told about a product. The skill creates it on firs
 ```yaml
 name: my-app                     # the GitHub repo name if Foreman has to create one; defaults to the folder name
 spec_format: openspec
-paths: { src: "src/**", tests: "tests/**", docs: "docs/**" }
+paths: { src: "src/**", tests: "tests/**", docs: "docs/**", ci: ".github/**", ignore: ".gitignore" }  # ci, ignore: optional
 commands:
   build: dotnet build
   test: dotnet test
 dependency_manifests: ["**/*.csproj"]
 protected: ["**/Migrations/**"]
+requires: [docker]                   # optional: only if the tests need Docker
 ```
 
-`paths` scope what each agent may write; `commands.build` and `commands.test` become the scoped `Bash(...)` permissions of the code-writing agents and are what the gates run; `dependency_manifests` and `protected` decide what needs human approval. `examples/target.yaml` in the Foreman repo is a template. Agents may not write `.foreman/` or `.claude/`: they are outside every writable path.
+`paths` scope what each agent may write; the optional `ci` and `ignore` paths let the implementer write CI workflows and the implementer and test writer add `.gitignore` entries (a path the profile does not define is simply not writable, and every change to them needs human approval); `requires: [docker]` makes a run check Docker before it starts; `commands.build` and `commands.test` become the scoped `Bash(...)` permissions of the code-writing agents and are what the gates run; `dependency_manifests` and `protected` decide what needs human approval. `examples/target.yaml` in the Foreman repo is a template. Agents may not write `.foreman/` or `.claude/`: they are outside every writable path.
 
 ## 16. Infrastructure
 

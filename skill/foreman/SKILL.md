@@ -97,16 +97,21 @@ Foreman knows nothing about any product until `PRODUCT/.foreman/target.yaml` exi
      src: "src/**"
      tests: "tests/**"
      docs: "docs/**"
+     ci: ".github/**"                    # optional: the implementer may write CI workflows and Dependabot config
+     ignore: ".gitignore"                # optional: the implementer and test writer may add ignore entries
    commands:                             # the gates run these; code-writing agents may only run these
      build: dotnet build
      test: dotnet test
    dependency_manifests: ["**/*.csproj"] # changing these needs the developer's approval
    protected: ["**/Migrations/**"]       # so does anything under these
+   requires: [docker]                    # optional: only if the tests need Docker; a run refuses to start while it is off
    ```
    `commands.build` and `commands.test` must work from the repo root and exit non-zero on failure. `examples/target.yaml` in the Foreman folder is the same template.
    Rules for a good profile:
    - Keep the `/**` on every path (`src/**`, not `src/`): a path without it matches nothing, and every write would be refused.
-   - Agents may only write inside `src`, `tests` and `docs`, so the profile must make the product fit in them. Anything else at the repo root, such as a solution file, `Dockerfile` or `docker-compose.yml`, would be refused: keep those inside `src`.
+   - Agents may only write inside `src`, `tests` and `docs`, plus `ci` and `ignore` when the profile lists them. So the profile must make the product fit in those. Anything else at the repo root, such as a solution file, `Dockerfile` or `docker-compose.yml`, would be refused: keep those inside `src`.
+   - **`ci` and `ignore` are opt-in.** Ask the developer once: "Should agents be able to write CI workflows (GitHub Actions, Dependabot) and add `.gitignore` entries? You approve every such change." Recommend yes, and leave the two lines out if they say no. Without `ci` a story that needs a workflow cannot be built; without `ignore`, a tool that writes its own files (a snapshot library's `*.received.*`) leaves untracked files that fail the run.
+   - **`requires`**: add `requires: [docker]` when the tests need Docker (Testcontainers, a database in compose). Foreman then checks `docker info` at the start of every run and stops with a fix if it is not running. Leave the line out otherwise.
    - **No code yet (greenfield):** the commands must describe where the first projects *will* live, and must work from the repo root once they exist. Prefer commands that name a project folder over ones that need a root-level solution file (for .NET: `dotnet build src/<Name>.Api` and `dotnet test tests/<Name>.Tests`, not a bare `dotnet build`). Tell the developer the names you chose, and offer to add them to the issue.
 4. Write the confirmed file to `PRODUCT/.foreman/target.yaml`.
 5. **Install the toolchain.** The profile's commands only work if the language's SDK is on this machine, and a runtime alone cannot build (for .NET, `dotnet --list-sdks` must list an SDK; a `dotnet.exe` on PATH proves nothing). Do this now, not in the middle of a run.
@@ -134,8 +139,8 @@ Foreman knows nothing about any product until `PRODUCT/.foreman/target.yaml` exi
 
    *Check it worked.* Run the version check again. A tool installed into a folder that was not on PATH when this session started will not be found until a new session: if the check still fails, tell the developer to restart Claude Code and run `/foreman setup` again; the steps already done will be quick.
 
-   *Docker.* If the product's tests need it (Testcontainers, a database in compose), check `docker info` works. If the daemon is off, tell the developer to start Docker Desktop.
-6. **Make sure `.gitignore` is right.** Agents cannot edit it. It must exist and ignore the stack's build output (for .NET: `dotnet new gitignore`, which covers `bin/` and `obj/`) and `logs/`, where Foreman asks agents to write their logs. Add what is missing; it is committed in step 6.
+   *Docker.* If the product's tests need it (Testcontainers, a database in compose), the profile says `requires: [docker]`; check `docker info` works now. If the daemon is off, tell the developer to start Docker Desktop. Foreman checks again at the start of every run.
+6. **Make sure `.gitignore` is right.** Agents can only add entries when the profile has `ignore`, and the developer approves each change, so do not rely on them. It must exist and ignore the stack's build output (for .NET: `dotnet new gitignore`, which covers `bin/` and `obj/`) and `logs/`, where Foreman asks agents to write their logs. Add what is missing; it is committed in step 6.
 
 ## 6. Commit the setup
 

@@ -11,7 +11,7 @@ SECRET_PATTERNS = {
     "github-token": r"gh[pousr]_[A-Za-z0-9]{36,}",
     "credential-assignment": r"""(?i)(api[_-]?key|secret|token|passw(?:or)?d)\s*[:=]\s*['"][^'"\s]{8,}['"]""",
 }
-CONFIG_PATTERNS = [".github/**", "Dockerfile*", "**/Dockerfile*", "docker-compose*.yml", "**/docker-compose*.yml"]
+CONFIG_PATTERNS = [".github/**", "**/.gitignore", "Dockerfile*", "**/Dockerfile*", "docker-compose*.yml", "**/docker-compose*.yml"]
 
 
 @dataclass(frozen=True)
@@ -22,12 +22,15 @@ class Finding:
 
 
 def resolve_writable(patterns: list[str], target: Target, **values: str) -> list[str]:
+    """Fill the placeholders. A pattern that names a profile path the product does not define (an optional
+    `ci` or `ignore`) is dropped, so the agent simply has no access to it."""
     mapping = {f"paths.{k}": v for k, v in target.paths.items()} | values
     out = []
     for p in patterns:
         for key, val in mapping.items():
             p = p.replace("{" + key + "}", str(val))
-        out.append(p)
+        if not re.search(r"\{paths\.\w+\}", p):
+            out.append(p)
     return out
 
 

@@ -1,7 +1,8 @@
 # Agent definitions (DESIGN.md section 6).
 # tier: small | mid | strong, mapped to a model below.
 # tools: Claude tool names; build_cmd / test_cmd expand to Bash permissions from the target profile.
-# writable: glob patterns; placeholders {change} {run_id} {option} {paths.src} {paths.tests} {paths.docs}.
+# writable: glob patterns; placeholders {change} {run_id} {option} {paths.src} {paths.tests} {paths.docs}
+#   and the optional {paths.ci} and {paths.ignore}, which only exist when the product's profile defines them.
 # context: the ONLY keys the prompt is built from; a trailing '?' marks a key optional.
 models:
   small: claude-haiku-5-5
@@ -45,13 +46,13 @@ agents:
   implementer:
     tier: mid
     tools: [Read, Edit, Write, build_cmd]
-    writable: ["{paths.src}"]
+    writable: ["{paths.src}", "{paths.ci}", "{paths.ignore}"]
     context: [design, tasks, target_profile, "reviewer_notes?", "last_failure?"]
 
   test_writer:
     tier: mid
     tools: [Read, Edit, Write, test_cmd]
-    writable: ["{paths.tests}"]
+    writable: ["{paths.tests}", "{paths.ignore}"]
     context: [contract, acceptance_criteria, spec_scenarios, target_profile]
 
   doc_writer:
