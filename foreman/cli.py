@@ -5,6 +5,7 @@
     foreman respond 7 --approve                  answer one
     foreman resume RUN_ID                        continue a safe-stopped or crashed run
     foreman logs [RUN_ID] [--problems] [--cost]  what happened: list runs, or one run's timeline
+    foreman metrics RUN_ID                       how reliable a run was: success, retries, rollbacks, recovery, latency, cost
     foreman update                               bring this Foreman checkout up to date with origin/main
     foreman doctor [--repo DIR] [--install-skill]  is this product's skill copy and profile current?
 """
@@ -19,6 +20,7 @@ from foreman.adapters.gitops import RepoError
 from foreman.adapters.updater import install_skill, profile_hints, skill_status, update_foreman
 from foreman.core.config import PROFILE, RunConfig
 from foreman.engine import DB_NAME, RunRefused, make_checkpointer, make_run, open_session, resume_session
+from foreman.reports.metrics import run_metrics
 from foreman.state.store import Store
 
 EXIT_CODES = {"completed": 0, "safe_stopped": 2}
@@ -150,6 +152,37 @@ def cmd_logs(args) -> int:
     return 0
 
 
+def duration(seconds: float) -> str:
+    hours, rest = divmod(round(seconds), 3600)
+    minutes, secs = divmod(rest, 60)
+    if hours:
+        return f"{hours}h {minutes:02d}m {secs:02d}s"
+    return f"{minutes}m {secs:02d}s" if minutes else f"{secs}s"
+
+
+def cmd_metrics(args) -> int:
+    """How reliable one run was, from its audit events and cost rows."""
+    store = open_store(args)
+    events = store.audit_events(args.run)
+    if not events:
+        raise CliError(f"no events recorded for run {args.run}")
+    m = run_metrics(events, store.cost_events(run_id=args.run))
+    print(f"run {args.run}")
+    for label, value in (
+        ("end-to-end latency", duration(m["latency_s"])),
+        ("human wait", duration(m["human_wait_s"])),
+        ("retry rate", f"{m['retry_rate']:.2f} retries per passed stage"),
+        ("rollbacks", str(m["rollbacks"])),
+        ("mean time to recover", duration(m["mttr_s"])),
+        ("cost", f"${m['cost_usd']:.2f} (retries and re-runs ${m['retry_cost_usd']:.2f})"),
+    ):
+        print(f"{label:<22}{value}")
+    print("stage success")
+    for stage, rate in m["stage_success"].items():
+        print(f"  {stage:<20}{rate:.0%}")
+    return 0
+
+
 def cmd_update(args) -> int:
     """Fast-forward this Foreman checkout. It runs the old code, so `foreman doctor` (new code) reports the rest."""
     result = update_foreman(ROOT)
@@ -218,6 +251,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--problems", action="store_true", help="only failed attempts, retries, stops and rollbacks")
     p.add_argument("--cost", action="store_true", help="also show what each agent call cost")
     p.set_defaults(func=cmd_logs)
+
+    p = sub.add_parser("metrics", parents=[common], help="how reliable a run was: success, retries, rollbacks, recovery, latency, cost")
+    p.add_argument("run", help="a run id")
+    p.set_defaults(func=cmd_metrics)
 
     p = sub.add_parser("update", help="bring this Foreman checkout up to date with origin/main")
     p.set_defaults(func=cmd_update)

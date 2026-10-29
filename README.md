@@ -117,6 +117,7 @@ uv run foreman resume <id>                                      # continue a saf
 | `foreman update` | bring this Foreman checkout up to date with `origin/main` (a fast-forward). It refuses, and changes nothing, if Foreman has local edits, commits that are not on `origin/main`, or is not on `main`. Prints the new commits and whether `uv sync` is needed |
 | `foreman doctor [--repo PATH] [--install-skill]` | check a product against this Foreman: is its copy of the skill current, and does its `.foreman/target.yaml` have the newest settings? `--install-skill` copies the latest skill into the product |
 | `foreman logs [RUN_ID] [--problems] [--cost]` | what Foreman did. Without a run id: every run with its type, status and cost. With one: its timeline. `--problems` keeps only failed attempts, retries, stops and rollbacks; `--cost` adds what each agent call cost |
+| `foreman metrics RUN_ID` | how reliable a run was, from its audit events and cost rows: end-to-end latency, human wait, retries per passed stage, rollbacks, mean time to recover, cost (with the part spent on retries) and the success rate of each stage |
 
 All commands accept `--runs-dir` (default: `runs/` in the Foreman folder).
 
@@ -136,6 +137,7 @@ Foreman records everything it does, in four places:
 |---|---|---|
 | the output of `foreman run` (in Claude Code, the background command's output) | live progress lines: `[classify] classified: ...`, `[implement] stage_passed`, `[reproduce] attempt_failed: ...`, `[open_pr] pr_opened: <url>`, `[run] safe_stop: ...` | read the output of the run |
 | the audit trail | every event with its time, stage, attempt and reason, and what each agent call cost | `foreman logs` and `foreman logs <run id> [--problems] [--cost]` |
+| reliability numbers | latency, human wait, retry rate, rollbacks, mean time to recover, cost and success per stage, for one run | `foreman metrics <run id>` |
 | the issue thread on GitHub | a human-readable trail: classification, the proposal, validation results, the PR, merge, the observe verdict | open the issue |
 | `runs/foreman.db` in the Foreman folder | the same audit trail as raw tables `audit_events`, `cost_events`, `human_requests` | any SQLite tool, or Python's `sqlite3` module |
 
@@ -400,7 +402,7 @@ Left out of this version to keep it small enough to read in an afternoon:
 - **Drive OpenSpec's own skills** (`/opsx:propose`, `/opsx:apply`, `/opsx:verify`) from the agents, once they are shown to work under `claude -p`. Today the agents use only OpenSpec's CLI helpers.
 - **Skip unchanged stages** after a failed validation (hash each stage's inputs). Today a validation failure re-runs implement, tests and docs.
 - **Model fallback and replay**: escalate to the strongest model after retries fail; record every worker call so a run can be replayed without Claude.
-- **`foreman metrics` and `foreman cost`**, and SQL views for stage success, retry rate, MTTR, latency, human wait. The data is already in SQLite.
+- **`foreman cost`**, and SQL views, or a metrics view across runs. `foreman metrics <run id>` already reports stage success, retry rate, rollbacks, MTTR, latency and human wait for one run; the data for the rest is in SQLite.
 - **Log services for `observe`** (Datadog and similar) instead of local files.
 - **Deploy and smoke-test stage** with an SLO verdict and an automatic revert PR plus bugfix issue on failure.
 - **Postgres** for a shared, multi-user installation.

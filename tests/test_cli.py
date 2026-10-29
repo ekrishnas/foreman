@@ -191,3 +191,56 @@ def test_logs_cost_adds_what_each_agent_call_cost(tmp_path, capsys):
 def test_logs_for_an_unknown_run_is_an_error(tmp_path, capsys):
     code, out = cli(tmp_path, capsys, "logs", "nope")
     assert code == 1 and "no events recorded for run nope" in out
+
+
+# ---- metrics: how reliable a run was
+
+def seed_metrics_run(tmp_path, run=RUN, extra=()):
+    store = Store(tmp_path / "foreman.db")
+
+    def at(minute, second=0):
+        return f"2026-10-29T12:{minute:02d}:{second:02d}"
+
+    events = [
+        ("intake", "stage_passed", 0, {}, at(0)),
+        ("implement", "attempt_failed", 0, {"reason": "build failed"}, at(1)),
+        ("implement", "retry", 1, {}, at(1)),
+        ("implement", "stage_passed", 1, {}, at(3)),
+        ("validate", "attempt_failed", 1, {"reason": "tasks not reported done"}, at(4)),
+        ("validate", "retry", 1, {}, at(4)),
+        ("validate", "stage_passed", 0, {}, at(5)),
+        ("approve_proposal", "approval", 0, {"wait_s": 30}, at(5, 30)),
+        *extra,
+        ("run", "run_completed", 0, {}, at(10)),
+    ]
+    for stage, event, attempt, details, ts in events:
+        store.audit(AuditEvent(run, "new_implementation", stage, event, attempt, details=details, ts=ts))
+    store.cost(CostEvent(run, 24, "new_implementation", "implement", "implementer", 0, "m", 1000, 100, 0.30, 1000))
+    store.cost(CostEvent(run, 24, "new_implementation", "implement", "implementer", 1, "m", 1000, 100, 0.20, 1000))
+    return store
+
+
+def test_metrics_for_a_run_reports_its_reliability_numbers(tmp_path, capsys):
+    seed_metrics_run(tmp_path)
+    code, out = cli(tmp_path, capsys, "metrics", RUN)
+
+    def line(label):
+        return next(row for row in out.splitlines() if row.startswith(label))
+
+    assert code == 0 and out.splitlines()[0] == f"run {RUN}"
+    assert "10m 00s" in line("end-to-end latency") and "30s" in line("human wait")
+    assert "0.67" in line("retry rate") and line("rollbacks").split()[-1] == "0"
+    assert "1m 30s" in line("mean time to recover")
+    assert "$0.50" in line("cost") and "$0.20" in line("cost")
+    assert "50%" in line("  implement") and "100%" in line("  intake") and "50%" in line("  validate")
+
+
+def test_metrics_counts_rollbacks(tmp_path, capsys):
+    seed_metrics_run(tmp_path, extra=[("validate", "rollback", 0, {"to": "abc"}, "2026-10-29T12:06:00")])
+    out = cli(tmp_path, capsys, "metrics", RUN)[1]
+    assert next(row for row in out.splitlines() if row.startswith("rollbacks")).split()[-1] == "1"
+
+
+def test_metrics_for_an_unknown_run_is_an_error(tmp_path, capsys):
+    code, out = cli(tmp_path, capsys, "metrics", "nope")
+    assert code == 1 and "no events recorded for run nope" in out
