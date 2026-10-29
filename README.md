@@ -76,7 +76,7 @@ Prerequisites it will check for: `git`, `uv`, `claude`, `gh` (logged in), `opens
 
 ### From Claude Code (the normal way)
 
-1. File the work as an ordinary GitHub issue in the product repo. For a bug, include steps to reproduce and expected versus actual. For an ambiguous idea, put open questions under a `## Questions` heading. `examples/` has two samples.
+1. File the work as an ordinary GitHub issue in the product repo. For a bug, include steps to reproduce and expected versus actual. For an ambiguous idea, put open questions under a `## Questions` heading. `examples/` has two samples. **Or skip this:** describe the work in the Claude Code message instead (you can `@`-attach a file, for example `/foreman work on the architecture diagram @architecture-hld.svg`). The skill drafts the issue from your words, with a `## Questions` section if the request is open-ended, shows it to you, and creates it after your OK. The classifier will usually treat an open-ended request as a `spike`: Foreman asks you its questions, explores options and writes an analysis before anything is built.
 2. In Claude Code, opened in the product repo:
 
    ```

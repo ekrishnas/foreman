@@ -1,7 +1,7 @@
 ---
 name: foreman
 description: Hand a GitHub issue to Foreman, a governed orchestrator that classifies the work, runs the matching workflow (new implementation, change to existing code, bugfix, test improvement, doc improvement, spike, or a post-deploy log check) and opens a pull request. Use only when the developer types /foreman.
-argument-hint: setup | work on #1 | fix #3 | #1 is deployed, check the logs
+argument-hint: setup | work on #1 | fix #3 | #1 is deployed, check the logs | or describe the work (you can @-attach a file)
 disable-model-invocation: true
 allowed-tools: Bash(uv run:*), Bash(git status:*), Bash(git remote:*), Bash(git rev-parse:*), Bash(gh auth status:*), Bash(openspec --version:*)
 ---
@@ -119,9 +119,20 @@ Foreman refuses to start a branch from a dirty working tree, and anything uncomm
 - If the only changes are setup files (`.claude/` including OpenSpec's skills and commands, `.foreman/`, `openspec/`, `.gitignore`), tell the developer which ones and ask permission to commit them ("Add Foreman and OpenSpec setup"). Commit on the current branch; do not push.
 - If there are other uncommitted changes, tell the developer to commit or stash them first. (A log check, "is deployed, check the logs", does not need a clean tree.)
 
-## 7. Start the run
+## 7. Get an issue, then start the run
 
-(A setup-only request ends at step 6.) Keep the developer's sentence exactly as typed: Foreman's classifier reads it ("is deployed, check the logs" means something different from "work on"). You do not choose the kind of work; the classifier does. Find the issue number in what they typed (`#1`, `issue 1`, `1`); ask if there is none.
+(A setup-only request ends at step 6.) Foreman always works from a GitHub issue, because the issue thread is its audit trail. You do not choose the kind of work; Foreman's classifier does, from the developer's sentence and the issue ("is deployed, check the logs" means something different from "work on"), so keep the sentence exactly as typed.
+
+**If they gave an issue number** (`#1`, `issue 1`, `1`), use it.
+
+**If they described the work instead** (for example "work on the architecture diagram @architecture-hld.svg", or any open-ended or ambiguous request), turn it into an issue yourself. Do not ask them to write one, and do not ask what to do instead: this is a normal way to start. Foreman's spike workflow exists for exactly this kind of request.
+
+1. **Draft the issue** from their words, keeping their meaning and wording:
+   - *Title*: a short noun phrase.
+   - *Body*: what they asked for, in their words; the content, or a precise description, of any file they attached or referenced with `@` and where it lives in the repo; and, when the request is open-ended or ambiguous, a `## Questions` section with the two to four things that must be answered before anyone can build it. Foreman asks those first, in a clarification round, then explores options before building anything. Do not invent requirements and do not answer your own questions.
+2. **Referenced files.** If a file they referenced is untracked or modified in git, say that it has to be committed so agents can read it and the run can start from a clean tree, and ask permission to commit it as it is (`git add <file>` and a commit "Add <file>"). Name its repo path in the issue body.
+3. **Confirm once.** Show the drafted title and body and ask: create it, or change it? Creating an issue is visible on GitHub, so wait for the yes. Then write the body to a temporary file outside the repo and run `gh issue create --title "<title>" --body-file <file>`. Read the issue number from the URL it prints, and tell the developer the number and the link.
+4. Carry on with that number.
 
 Run, **in the background**:
 
