@@ -17,6 +17,7 @@ On top of OpenSpec's own format, Foreman requires:
 
 - `design.md` has a precise `## API contract` section (endpoints or functions, request and response shapes, status codes, errors). The implementer, test writer and doc writer work in parallel from this contract, so it must be complete and unambiguous.
 - `tasks.md` has numbered checkbox tasks grouped under `## 1. Implementation`, `## 2. Tests`, `## 3. Documentation`, in the form `- [ ] 1.1 <task>`.
+- Write each task's verification step so that the agent doing the task can run it. The implementer may run only the build command and read and write files; the test writer only the test command; the doc writer only reads and writes files. Do not ask for `dotnet restore`, `git`, `ls`, `docker` or any other command, and do not make a task out of what Foreman's own gates already check (the build, the tests, the OpenSpec validation, and that no file is written outside the allowed paths).
 - Every requirement uses SHALL or MUST and has at least one `#### Scenario: <name>` with `- **WHEN** ...` and `- **THEN** ...` lines.
 - `## Why` is at least 50 characters.
 

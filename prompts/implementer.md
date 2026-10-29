@@ -19,6 +19,8 @@ When finished, reply with a short summary, then one line per completed task from
 DONE: 1.1
 ```
 
+Foreman ticks a task only when you report it. Some tasks end with a check you are not allowed to run (a command other than the build command, such as `dotnet restore`, `git` or `ls`). Do not leave such a task unreported: report it `DONE` once its work is complete, and say in your summary which check you could not run. Foreman's own build, tests, policy and OpenSpec checks run after you.
+
 ## Observability (required)
 Your last section must say how this code logs, so that someone can later check from the logs that it works:
 
